@@ -17,8 +17,8 @@ A decentralized, research collaboration platform where academics, scientists, an
 ### Progress:
   
 - [x] Initialize Rails API with PostgreSQL
-- [ ] Initialize React app
-- [ ] Set up Tailwind CSS for frontend styling  
+- [x] Initialize React app
+- [x] Set up Material UI for frontend styling  
 - [ ] Set up Devise-JWT authentication for user login/signup  
 - [ ] Create models & migrations for Users, Research Papers, Comments, Collaborations
 - [ ] Implement CRUD APIs for research papers & user profiles  
