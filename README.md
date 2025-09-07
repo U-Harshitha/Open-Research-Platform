@@ -1,5 +1,10 @@
 # Open-Research-Platform
-A decentralized, research collaboration platform where academics, scientists, and enthusiasts can work together, share datasets, and publish findings in an open and transparent manner.
+
+A collaborative platform where researchers, students, and professionals can:
+- Upload & share datasets with metadata, licensing, and version control.
+- Collaborate on research projects with real-time document editing, code notebooks, and discussion threads.
+- Publish findings as open-access preprints, linked to datasets and code for reproducibility.
+- Validate research through transparent peer review and community endorsements.
 
 ### Tech Stack used:
 - Backend:
