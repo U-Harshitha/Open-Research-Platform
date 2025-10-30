@@ -1,0 +1,16 @@
+{
+  "projects": {
+    "default": "research-e9734"
+  },
+  "targets": {
+    "research-e9734": {
+      "hosting": {
+        "research-nexus-app": [
+          "research-e9734"
+        ]
+      }
+    }
+  },
+  "etags": {},
+  "dataconnectEmulatorConfig": {}
+}

@@ -1,0 +1,32 @@
+{
+  "name": "open-research-nexus",
+  "version": "1.0.0",
+  "description": "Decentralized AI-Powered Research Collaboration Platform",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run client\" \"npm run server\"",
+    "client": "cd frontend && npm run dev",
+    "server": "cd backend && python -m flask run",
+    "build": "cd frontend && npm run build",
+    "start": "cd frontend && npm run preview",
+    "install-all": "npm install && cd frontend && npm install && cd ../backend && pip install -r requirements.txt",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "research",
+    "collaboration",
+    "ai",
+    "firebase",
+    "react",
+    "gemini",
+    "academic"
+  ],
+  "author": "Open Research Nexus Team",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
