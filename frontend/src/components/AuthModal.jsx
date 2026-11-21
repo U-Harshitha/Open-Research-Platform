@@ -1,488 +1,309 @@
-import React, { useState, useEffect } from 'react';
-import { 
+import React, { useEffect, useState } from 'react';
+import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
   signInAnonymously,
-  signOut,
   updateProfile,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../services/firebase.js';
-import { User, Mail, Lock, Eye, EyeOff, LogIn, UserPlus, Globe, Monitor } from 'lucide-react';
+import { Eye, EyeOff, Loader2, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { auth, db } from '../services/firebase.js';
+import Logo from './ui/Logo.jsx';
 
-const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
-  const [authMode, setAuthMode] = useState('signin'); // 'signin', 'signup', 'reset'
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    confirmPassword: '',
-    displayName: ''
-  });
+// Firebase isn't configured for this auth method → fall back to a local demo
+// session so the workspace can still be explored. Never on user error.
+const NOT_CONFIGURED = ['auth/configuration-not-found', 'auth/operation-not-allowed', 'auth/admin-restricted-operation'];
+
+const demoUser = (overrides) => ({
+  uid: `demo-${Date.now()}`,
+  displayName: 'Demo researcher',
+  email: null,
+  photoURL: null,
+  isAnonymous: true,
+  isDemo: true,
+  providerData: [],
+  ...overrides,
+});
+
+const errorMessage = (code) =>
+  ({
+    'auth/user-not-found': 'No account uses that email.',
+    'auth/wrong-password': 'That password is incorrect.',
+    'auth/invalid-credential': 'Email or password is incorrect.',
+    'auth/email-already-in-use': 'An account with this email already exists.',
+    'auth/weak-password': 'Use at least 6 characters.',
+    'auth/invalid-email': 'That email address doesn’t look right.',
+    'auth/too-many-requests': 'Too many attempts. Try again in a few minutes.',
+    'auth/unauthorized-domain': 'Sign-in isn’t enabled for this domain yet.',
+    'auth/popup-blocked': 'Your browser blocked the sign-in window.',
+  })[code] || 'Sign-in failed. Please try again.';
+
+const COPY = {
+  signin: { title: 'Welcome back', sub: 'Sign in to pick up where you left off.' },
+  signup: { title: 'Join the commons', sub: 'Free for every researcher, student and curious mind.' },
+  reset: { title: 'Reset your password', sub: 'We’ll email you a link.' },
+};
+
+const AuthModal = ({ isOpen, onClose, onAuthSuccess, initialMode = 'signin', reason }) => {
+  const [mode, setMode] = useState(initialMode);
+  const [form, setForm] = useState({ email: '', password: '', confirmPassword: '', displayName: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const googleProvider = new GoogleAuthProvider();
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
-  const resetForm = () => {
-    setFormData({
-      email: '',
-      password: '',
-      confirmPassword: '',
-      displayName: ''
-    });
+  const change = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  const switchMode = (m) => {
+    setMode(m);
+    setForm({ email: '', password: '', confirmPassword: '', displayName: '' });
   };
 
-  const handleInputChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
-  };
-
-  const createUserProfile = async (user, additionalData = {}) => {
-    if (!user) return;
-    
-    const userRef = doc(db, 'users', user.uid);
-    const userSnap = await getDoc(userRef);
-    
-    if (!userSnap.exists()) {
-      const { displayName, email, photoURL } = user;
-      const createdAt = new Date();
-      
-      try {
-        await setDoc(userRef, {
-          displayName: displayName || additionalData.displayName || 'Anonymous User',
-          email,
-          photoURL: photoURL || null,
-          createdAt,
-          lastActive: createdAt,
-          preferences: {
-            theme: 'light',
-            notifications: true,
-            autoSave: true
-          },
-          stats: {
-            documentsCreated: 0,
-            collaborations: 0,
-            totalEdits: 0
-          },
-          ...additionalData
+  const createUserProfile = async (user, extra = {}) => {
+    if (!user || !db) return;
+    try {
+      const ref = doc(db, 'users', user.uid);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) {
+        const now = new Date();
+        await setDoc(ref, {
+          displayName: user.displayName || extra.displayName || 'Researcher',
+          email: user.email || null,
+          photoURL: user.photoURL || null,
+          createdAt: now,
+          lastActive: now,
+          fields: [],
+          openToCollaborate: true,
+          preferences: { notifications: true, autoSave: true },
+          ...extra,
         });
+      }
+    } catch (error) {
+      console.error('Error creating user profile:', error);
+    }
+  };
+
+  const run = async (fn) => {
+    setLoading(true);
+    try {
+      await fn();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmail = (e) => {
+    e.preventDefault();
+    if (mode === 'reset') return handleReset();
+    if (mode === 'signup') {
+      if (form.password !== form.confirmPassword) return toast.error('Passwords don’t match.');
+      if (form.password.length < 6) return toast.error('Use at least 6 characters.');
+    }
+    run(async () => {
+      try {
+        if (mode === 'signin') {
+          const { user } = await signInWithEmailAndPassword(auth, form.email, form.password);
+          await createUserProfile(user);
+          toast.success(`Welcome back, ${user.displayName || 'researcher'}`);
+          onAuthSuccess(user);
+        } else {
+          const { user } = await createUserWithEmailAndPassword(auth, form.email, form.password);
+          await updateProfile(user, { displayName: form.displayName });
+          await createUserProfile(user, { displayName: form.displayName });
+          toast.success(`Welcome, ${form.displayName}`);
+          onAuthSuccess(user);
+        }
       } catch (error) {
-        console.error('Error creating user profile:', error);
+        console.error('Email auth error:', error);
+        if (NOT_CONFIGURED.includes(error.code)) {
+          toast('Email sign-in isn’t configured — opening a local demo session.');
+          onAuthSuccess(demoUser({ displayName: form.displayName || form.email.split('@')[0], email: form.email, isAnonymous: false }));
+        } else {
+          toast.error(errorMessage(error.code));
+        }
       }
-    }
-    
-    return userRef;
+    });
   };
 
-  const handleEmailSignIn = async (e) => {
-    e.preventDefault();
-    if (!formData.email || !formData.password) {
-      toast.error('Please fill in all fields');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const { user } = await signInWithEmailAndPassword(auth, formData.email, formData.password);
-      await createUserProfile(user);
-      toast.success(`Welcome back, ${user.displayName || 'User'}!`);
-      onAuthSuccess(user);
-    } catch (error) {
-      console.error('Sign in error:', error);
-      
-      // Fallback to demo mode for development
-      if (error.code === 'auth/configuration-not-found' || error.code === 'auth/user-not-found') {
-        const demoUser = {
-          uid: 'demo-email-' + Date.now(),
-          displayName: formData.email.split('@')[0] || 'Demo User',
-          email: formData.email,
-          photoURL: null,
-          isAnonymous: false,
-          providerData: [{ providerId: 'password' }]
-        };
-        toast.success('Welcome to Demo Mode!');
-        onAuthSuccess(demoUser);
-      } else {
-        toast.error(getAuthErrorMessage(error.code));
+  const handleGoogle = () =>
+    run(async () => {
+      try {
+        const result = await signInWithPopup(auth, new GoogleAuthProvider());
+        await createUserProfile(result.user);
+        toast.success(`Welcome, ${result.user.displayName}`);
+        onAuthSuccess(result.user);
+      } catch (error) {
+        console.error('Google sign in error:', error);
+        if (['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(error.code)) return;
+        if (NOT_CONFIGURED.includes(error.code)) {
+          toast('Google sign-in isn’t configured — opening a local demo session.');
+          onAuthSuccess(demoUser({ isAnonymous: false }));
+        } else {
+          toast.error(errorMessage(error.code));
+        }
       }
-    } finally {
-      setLoading(false);
-    }
-  };
+    });
 
-  const handleEmailSignUp = async (e) => {
-    e.preventDefault();
-    if (!formData.email || !formData.password || !formData.displayName) {
-      toast.error('Please fill in all fields');
-      return;
-    }
-
-    if (formData.password !== formData.confirmPassword) {
-      toast.error('Passwords do not match');
-      return;
-    }
-
-    if (formData.password.length < 6) {
-      toast.error('Password must be at least 6 characters');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const { user } = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-      
-      // Update user profile
-      await updateProfile(user, {
-        displayName: formData.displayName
-      });
-
-      await createUserProfile(user, {
-        displayName: formData.displayName
-      });
-
-      toast.success(`Welcome to Research Nexus, ${formData.displayName}!`);
-      onAuthSuccess(user);
-    } catch (error) {
-      console.error('Sign up error:', error);
-      toast.error(getAuthErrorMessage(error.code));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGoogleSignIn = async () => {
-    setLoading(true);
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      await createUserProfile(result.user);
-      toast.success(`Welcome, ${result.user.displayName}!`);
-      onAuthSuccess(result.user);
-    } catch (error) {
-      console.error('Google sign in error:', error);
-      
-      // If Firebase Auth is not properly configured, create a demo user
-      if (error.code === 'auth/configuration-not-found' || error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
-        const demoUser = {
-          uid: 'demo-google-' + Date.now(),
-          displayName: 'Demo Google User',
-          email: 'demo@google.com',
-          photoURL: null,
-          isAnonymous: false,
-          providerData: [{ providerId: 'google.com' }]
-        };
-        toast.success('Welcome to Demo Mode!');
-        onAuthSuccess(demoUser);
-      } else {
-        toast.error(getAuthErrorMessage(error.code));
+  const handleGuest = () =>
+    run(async () => {
+      try {
+        const { user } = await signInAnonymously(auth);
+        await createUserProfile(user, { displayName: 'Guest', isAnonymous: true });
+        toast.success('You’re in as a guest. Create an account any time to keep your work.');
+        onAuthSuccess(user);
+      } catch (error) {
+        console.error('Anonymous sign in error:', error);
+        toast('Guest sign-in isn’t available — opening a local demo session.');
+        onAuthSuccess(demoUser());
       }
-    } finally {
-      setLoading(false);
-    }
-  };
+    });
 
-  const handleAnonymousSignIn = async () => {
-    setLoading(true);
-    try {
-      const { user } = await signInAnonymously(auth);
-      await createUserProfile(user, {
-        displayName: 'Guest User',
-        isAnonymous: true
-      });
-      toast.success('Signed in as guest. You can upgrade your account anytime!');
-      onAuthSuccess(user);
-    } catch (error) {
-      console.error('Anonymous sign in error:', error);
-      
-      // Fallback to demo mode if Firebase Auth fails
-      const demoUser = {
-        uid: 'demo-guest-' + Date.now(),
-        displayName: 'Demo Guest',
-        email: null,
-        photoURL: null,
-        isAnonymous: true,
-        providerData: []
-      };
-      toast.success('Welcome to Demo Mode as Guest!');
-      onAuthSuccess(demoUser);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePasswordReset = async (e) => {
-    e.preventDefault();
-    if (!formData.email) {
-      toast.error('Please enter your email address');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await sendPasswordResetEmail(auth, formData.email);
-      toast.success('Password reset email sent! Check your inbox.');
-      setAuthMode('signin');
-    } catch (error) {
-      console.error('Password reset error:', error);
-      toast.error(getAuthErrorMessage(error.code));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getAuthErrorMessage = (errorCode) => {
-    switch (errorCode) {
-      case 'auth/user-not-found':
-        return 'No account found with this email address';
-      case 'auth/wrong-password':
-        return 'Incorrect password';
-      case 'auth/email-already-in-use':
-        return 'An account with this email already exists';
-      case 'auth/weak-password':
-        return 'Password is too weak';
-      case 'auth/invalid-email':
-        return 'Invalid email address';
-      case 'auth/too-many-requests':
-        return 'Too many failed attempts. Please try again later';
-      default:
-        return 'Authentication failed. Please try again.';
-    }
+  const handleReset = () => {
+    if (!form.email) return toast.error('Enter your email address.');
+    run(async () => {
+      try {
+        await sendPasswordResetEmail(auth, form.email);
+        toast.success('Check your inbox for a reset link.');
+        switchMode('signin');
+      } catch (error) {
+        toast.error(errorMessage(error.code));
+      }
+    });
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full m-4 overflow-hidden">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-primary-600 to-accent-500 p-6 text-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold">
-                {authMode === 'signin' && 'Welcome Back'}
-                {authMode === 'signup' && 'Join Research Nexus'}
-                {authMode === 'reset' && 'Reset Password'}
-              </h2>
-              <p className="text-primary-100 mt-1">
-                {authMode === 'signin' && 'Sign in to your account'}
-                {authMode === 'signup' && 'Create your account'}
-                {authMode === 'reset' && 'Enter your email to reset'}
-              </p>
-            </div>
-            <button
-              onClick={onClose}
-              className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors"
-            >
-              ✕
-            </button>
-          </div>
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-0 backdrop-blur-[2px] animate-fade-in sm:items-center sm:p-4"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="auth-title"
+        className="w-full max-w-[26rem] overflow-hidden rounded-t-2xl border border-rule bg-surface shadow-lift animate-rise sm:rounded-2xl"
+      >
+        <div className="flex items-start justify-between px-6 pt-6">
+          <Logo compact />
+          <button onClick={onClose} className="icon-btn -mr-2 -mt-1" aria-label="Close">
+            <X className="h-4 w-4" />
+          </button>
         </div>
 
-        <div className="p-6">
-          {/* Social Sign In */}
-          <div className="space-y-3 mb-6">
-            <button
-              onClick={handleGoogleSignIn}
-              disabled={loading}
-              className="w-full flex items-center justify-center px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-            >
-              <Globe className="w-5 h-5 mr-3 text-red-500" />
-              Continue with Google
-            </button>
-            
-            <button
-              onClick={handleAnonymousSignIn}
-              disabled={loading}
-              className="w-full flex items-center justify-center px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-            >
-              <User className="w-5 h-5 mr-3 text-gray-500" />
-              Continue as Guest
-            </button>
-          </div>
+        <div className="px-6 pb-6 pt-5">
+          <h2 id="auth-title" className="display text-[1.75rem] leading-tight">
+            {COPY[mode].title}
+          </h2>
+          <p className="mt-1 text-sm text-ink-2">{reason || COPY[mode].sub}</p>
 
-          <div className="relative mb-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">or</span>
-            </div>
-          </div>
+          {mode !== 'reset' && (
+            <>
+              <div className="mt-6 grid gap-2">
+                <button onClick={handleGoogle} disabled={loading} className="btn-secondary w-full py-2.5">
+                  <GoogleMark />
+                  Continue with Google
+                </button>
+                <button onClick={handleGuest} disabled={loading} className="btn-ghost w-full py-2.5">
+                  Try it as a guest
+                </button>
+              </div>
+              <div className="my-5 flex items-center gap-3 text-2xs uppercase tracking-[0.14em] text-ink-3">
+                <span className="h-px flex-1 bg-rule" />
+                or with email
+                <span className="h-px flex-1 bg-rule" />
+              </div>
+            </>
+          )}
 
-          {/* Email Forms */}
-          <form onSubmit={
-            authMode === 'signin' ? handleEmailSignIn :
-            authMode === 'signup' ? handleEmailSignUp :
-            handlePasswordReset
-          }>
-            <div className="space-y-4">
-              {authMode === 'signup' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Full Name
-                  </label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                    <input
-                      type="text"
-                      name="displayName"
-                      value={formData.displayName}
-                      onChange={handleInputChange}
-                      className="input-field pl-10"
-                      placeholder="Enter your full name"
-                      required
-                    />
-                  </div>
-                </div>
-              )}
-
+          <form onSubmit={handleEmail} className={`space-y-3 ${mode === 'reset' ? 'mt-6' : ''}`}>
+            {mode === 'signup' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email Address
-                </label>
+                <label className="label" htmlFor="displayName">Name, as you’d like it cited</label>
+                <input id="displayName" name="displayName" value={form.displayName} onChange={change} className="input-field" placeholder="e.g. A. Researcher" required autoComplete="name" />
+              </div>
+            )}
+            <div>
+              <label className="label" htmlFor="email">Email</label>
+              <input id="email" type="email" name="email" value={form.email} onChange={change} className="input-field" placeholder="you@university.edu" required autoComplete="email" />
+            </div>
+            {mode !== 'reset' && (
+              <div>
+                <div className="flex items-baseline justify-between">
+                  <label className="label" htmlFor="password">Password</label>
+                  {mode === 'signin' && (
+                    <button type="button" onClick={() => switchMode('reset')} className="text-xs text-ink-3 hover:text-accent">
+                      Forgot?
+                    </button>
+                  )}
+                </div>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
                   <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleInputChange}
-                    className="input-field pl-10"
-                    placeholder="Enter your email"
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    name="password"
+                    value={form.password}
+                    onChange={change}
+                    className="input-field pr-10"
                     required
+                    autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-3 hover:text-ink"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
               </div>
-
-              {authMode !== 'reset' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      name="password"
-                      value={formData.password}
-                      onChange={handleInputChange}
-                      className="input-field pl-10 pr-10"
-                      placeholder="Enter your password"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-                    >
-                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {authMode === 'signup' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Confirm Password
-                  </label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      name="confirmPassword"
-                      value={formData.confirmPassword}
-                      onChange={handleInputChange}
-                      className="input-field pl-10"
-                      placeholder="Confirm your password"
-                      required
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full btn-primary mt-6 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <div className="flex items-center justify-center">
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Processing...
-                </div>
-              ) : (
-                <div className="flex items-center justify-center">
-                  {authMode === 'signin' && <><LogIn className="w-5 h-5 mr-2" /> Sign In</>}
-                  {authMode === 'signup' && <><UserPlus className="w-5 h-5 mr-2" /> Create Account</>}
-                  {authMode === 'reset' && <><Mail className="w-5 h-5 mr-2" /> Send Reset Email</>}
-                </div>
-              )}
+            )}
+            {mode === 'signup' && (
+              <div>
+                <label className="label" htmlFor="confirmPassword">Confirm password</label>
+                <input id="confirmPassword" type={showPassword ? 'text' : 'password'} name="confirmPassword" value={form.confirmPassword} onChange={change} className="input-field" required autoComplete="new-password" />
+              </div>
+            )}
+            <button type="submit" disabled={loading} className="btn-primary w-full py-2.5">
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {mode === 'signin' && 'Sign in'}
+              {mode === 'signup' && 'Create account'}
+              {mode === 'reset' && 'Send reset link'}
             </button>
           </form>
 
-          {/* Footer Links */}
-          <div className="mt-6 text-center text-sm">
-            {authMode === 'signin' && (
-              <div className="space-y-2">
-                <button
-                  onClick={() => setAuthMode('reset')}
-                  className="text-primary-600 hover:text-primary-700 block mx-auto"
-                >
-                  Forgot your password?
-                </button>
-                <p className="text-gray-600">
-                  Don't have an account?{' '}
-                  <button
-                    onClick={() => {
-                      setAuthMode('signup');
-                      resetForm();
-                    }}
-                    className="text-primary-600 hover:text-primary-700 font-medium"
-                  >
-                    Sign up
-                  </button>
-                </p>
-              </div>
+          <p className="mt-5 text-center text-sm text-ink-2">
+            {mode === 'signin' && (
+              <>New here? <button onClick={() => switchMode('signup')} className="font-medium text-accent hover:underline">Create an account</button></>
             )}
-
-            {authMode === 'signup' && (
-              <p className="text-gray-600">
-                Already have an account?{' '}
-                <button
-                  onClick={() => {
-                    setAuthMode('signin');
-                    resetForm();
-                  }}
-                  className="text-primary-600 hover:text-primary-700 font-medium"
-                >
-                  Sign in
-                </button>
-              </p>
+            {mode === 'signup' && (
+              <>Already have an account? <button onClick={() => switchMode('signin')} className="font-medium text-accent hover:underline">Sign in</button></>
             )}
-
-            {authMode === 'reset' && (
-              <button
-                onClick={() => {
-                  setAuthMode('signin');
-                  resetForm();
-                }}
-                className="text-primary-600 hover:text-primary-700"
-              >
-                Back to sign in
-              </button>
+            {mode === 'reset' && (
+              <button onClick={() => switchMode('signin')} className="font-medium text-accent hover:underline">Back to sign in</button>
             )}
-          </div>
+          </p>
         </div>
       </div>
     </div>
   );
 };
+
+const GoogleMark = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+    <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.4h6.5a5.6 5.6 0 0 1-2.4 3.6v3h3.9c2.2-2.1 3.5-5.1 3.5-8.7Z" />
+    <path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.3v3.1A12 12 0 0 0 12 24Z" />
+    <path fill="#FBBC05" d="M5.3 14.3a7.2 7.2 0 0 1 0-4.6V6.6h-4a12 12 0 0 0 0 10.8l4-3.1Z" />
+    <path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4A12 12 0 0 0 1.3 6.6l4 3.1c.9-2.9 3.6-4.9 6.7-4.9Z" />
+  </svg>
+);
 
 export default AuthModal;

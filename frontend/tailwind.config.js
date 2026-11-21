@@ -1,61 +1,79 @@
+import colors from 'tailwindcss/colors';
+
 /** @type {import('tailwindcss').Config} */
+const token = (name) => `rgb(var(--${name}) / <alpha-value>)`;
+
 export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
       colors: {
-        primary: {
-          50: '#eff6ff',
-          100: '#dbeafe',
-          200: '#bfdbfe',
-          300: '#93c5fd',
-          400: '#60a5fa',
-          500: '#3b82f6',
-          600: '#2563eb',
-          700: '#1d4ed8',
-          800: '#1e40af',
-          900: '#1e3a8a'
+        // Semantic tokens (defined in src/index.css)
+        paper: token('paper'),
+        surface: token('surface'),
+        sunken: token('sunken'),
+        ink: {
+          DEFAULT: token('ink'),
+          2: token('ink-2'),
+          3: token('ink-3'),
         },
+        rule: token('rule'),
         accent: {
-          50: '#f0fdf4',
-          100: '#dcfce7',
-          200: '#bbf7d0',
-          300: '#86efac',
-          400: '#4ade80',
-          500: '#22c55e',
-          600: '#16a34a',
-          700: '#15803d',
-          800: '#166534',
-          900: '#14532d'
-        }
+          DEFAULT: token('accent'),
+          strong: token('accent-strong'),
+          soft: token('accent-soft'),
+        },
+        mark: token('mark'),
+        signal: {
+          DEFAULT: token('signal'),
+          soft: token('signal-soft'),
+        },
+        // Legacy scales, remapped so older components inherit the new look
+        primary: {
+          50: '#eef1fa',
+          100: '#dde3f5',
+          200: '#bcc8eb',
+          300: '#8fa1da',
+          400: '#5f76c4',
+          500: '#3b55ab',
+          600: '#243c8f',
+          700: '#1c3077',
+          800: '#16265e',
+          900: '#101b45',
+        },
+        gray: colors.stone,
       },
       fontFamily: {
-        'sans': ['Inter', 'system-ui', 'sans-serif'],
-        'mono': ['JetBrains Mono', 'monospace']
+        serif: ['Newsreader', 'Georgia', 'Cambria', 'serif'],
+        sans: ['"IBM Plex Sans"', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['"IBM Plex Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
-      animation: {
-        'fade-in': 'fadeIn 0.5s ease-in-out',
-        'slide-up': 'slideUp 0.3s ease-out',
-        'pulse-soft': 'pulseSoft 2s infinite'
+      fontSize: {
+        '2xs': ['0.6875rem', { lineHeight: '1rem' }],
+      },
+      maxWidth: {
+        page: '76rem',
+        measure: '42rem',
+      },
+      boxShadow: {
+        sheet: '0 1px 0 rgb(var(--rule)), 0 12px 32px -12px rgb(24 27 33 / 0.12)',
+        lift: '0 1px 2px rgb(24 27 33 / 0.06), 0 8px 24px -8px rgb(24 27 33 / 0.14)',
       },
       keyframes: {
+        rise: {
+          '0%': { opacity: '0', transform: 'translateY(8px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
         fadeIn: {
           '0%': { opacity: '0' },
-          '100%': { opacity: '1' }
+          '100%': { opacity: '1' },
         },
-        slideUp: {
-          '0%': { transform: 'translateY(10px)', opacity: '0' },
-          '100%': { transform: 'translateY(0)', opacity: '1' }
-        },
-        pulseSoft: {
-          '0%, 100%': { opacity: '1' },
-          '50%': { opacity: '0.7' }
-        }
-      }
+      },
+      animation: {
+        rise: 'rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both',
+        'fade-in': 'fadeIn 0.3s ease-out both',
+      },
     },
   },
   plugins: [],
-}
+};

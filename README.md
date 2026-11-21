@@ -67,8 +67,9 @@ A comprehensive, real-time research collaboration platform built with React, Pyt
    - Download your Firebase service account JSON
    - Place it in `backend/firebase-service-account.json`
 
-6. **Update Firebase Config**
-   - Update `frontend/src/services/firebase.js` with your Firebase config
+6. **Frontend config (optional)**
+   - Copy `frontend/.env.example` to `frontend/.env.local` to set the AI service URL, base path or portfolio link
+   - Firebase web config lives in `frontend/src/config/firebase.js` (overridable with `VITE_FIREBASE_*`)
 
 ### Running the Application
 
@@ -84,12 +85,12 @@ A comprehensive, real-time research collaboration platform built with React, Pyt
    cd frontend
    npm run dev
    ```
-   Application runs on `http://localhost:3000`
+   Application runs on `http://localhost:3000/research/`
 
 ## 📖 Usage
 
 ### Getting Started
-1. Open `http://localhost:3000` in your browser
+1. Open `http://localhost:3000/research/` in your browser
 2. Sign in using Google, email/password, or continue as guest
 3. Create your first research document
 4. Invite collaborators and start researching together!
@@ -107,3 +108,41 @@ A comprehensive, real-time research collaboration platform built with React, Pyt
 npm run build
 firebase deploy --only hosting
 ```
+
+The build lands in `frontend/dist/research/`, and `firebase.json` serves it at
+`https://research-e9734.web.app/research/` (the site root redirects there).
+
+### Serving it from the portfolio at `/research`
+This works exactly like `/hangman`: the portfolio's Vercel rewrites proxy the path to
+where the app is hosted, and the app is built to live under that same path.
+
+Add these to `rewrites` in the portfolio's `vercel.json`:
+
+```json
+{ "source": "/research", "destination": "https://research-e9734.web.app/research/" },
+{ "source": "/research/:path*", "destination": "https://research-e9734.web.app/research/:path*" }
+```
+
+Then, once:
+- **Firebase Console → Authentication → Settings → Authorized domains**: add the portfolio
+  domain (`harshitha-upadhyayula.vercel.app`) so Google sign-in works through the proxy.
+- **Backend**: add the portfolio domain to `ALLOWED_ORIGINS`, and set `VITE_API_URL`
+  to the deployed Flask service before building.
+
+To mount it somewhere else, change `VITE_BASE_PATH` and the rewrite paths together.
+
+## 🗺️ Site map
+
+| Route | What it is |
+|---|---|
+| `/research/` | Landing page |
+| `/research/explore` | Discover projects by field, stage, and who's seeking collaborators |
+| `/research/p/:slug` | Project page: abstract, CRediT contributors, open questions, data & materials, open reviews, versions, BibTeX |
+| `/research/collaborate` | Open calls for expertise across disciplines |
+| `/research/guides` | Short guides for first-time research writers |
+| `/research/u/:handle` | Researcher profile |
+| `/research/new` | Start a project from a template |
+| `/research/workspace` | Editor with real-time sync, comments, AI assistant, materials and insights |
+
+Explore, project, collaborate and profile pages currently show clearly labelled **sample data**
+(`frontend/src/data/samples.js`) until public projects are queried from Firestore.
