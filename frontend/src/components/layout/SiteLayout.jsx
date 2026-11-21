@@ -3,9 +3,12 @@ import { Outlet, useLocation } from 'react-router-dom';
 import SiteHeader from './SiteHeader.jsx';
 import SiteFooter from './SiteFooter.jsx';
 import { XrayCorner } from '../xray/XrayButton.jsx';
+import { PsstNote } from '../ui/Stickers.jsx';
+import { useMode } from '../../context/ModeContext.jsx';
 
 export default function SiteLayout() {
   const { pathname } = useLocation();
+  const { mode } = useMode();
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [pathname]);
@@ -16,10 +19,15 @@ export default function SiteLayout() {
       </a>
       <SiteHeader />
       <main id="main" className="flex-1">
-        <Outlet />
+        <div key={`${mode}:${pathname}`} className="route-enter">
+          <Outlet />
+        </div>
       </main>
       <SiteFooter />
       <XrayCorner />
+      {mode === 'stories' && (
+        <PsstNote id="words-tool">psst — in the editor, the <b>Words</b> tool finds rhymes, synonyms and better adjectives ✦</PsstNote>
+      )}
     </div>
   );
 }

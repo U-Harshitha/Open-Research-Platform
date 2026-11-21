@@ -44,7 +44,9 @@ export default {
         gray: colors.stone,
       },
       fontFamily: {
-        serif: ['Newsreader', 'Georgia', 'Cambria', 'serif'],
+        serif: ['var(--font-display)', 'Georgia', 'Cambria', 'serif'],
+        reading: ['var(--font-reading)', 'Georgia', 'serif'],
+        hand: ['Caveat', 'cursive'],
         sans: ['"IBM Plex Sans"', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['"IBM Plex Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },

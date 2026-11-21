@@ -1,5 +1,5 @@
 import React from 'react';
-import { disciplineById } from '../../data/catalog.js';
+import { FIELD_BY_ID as disciplineById } from '../../data/modes.js';
 
 export function DisciplineDot({ id, className = 'h-2 w-2' }) {
   const d = disciplineById[id];

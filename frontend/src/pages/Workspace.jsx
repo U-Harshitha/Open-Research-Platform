@@ -1,9 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, BarChart3, Globe2, Lock, LogOut, Menu, Paperclip, Plus, Sparkles, X } from 'lucide-react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, BarChart3, Globe2, Inbox as InboxIcon, Lock, LogOut, Menu, MessageCircle, Paperclip, Plus, Sparkles, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useAuth, displayNameOf } from '../context/AuthContext.jsx';
-import { STAGES, TEMPLATES } from '../data/catalog.js';
+import { MODES, modeOfProject } from '../data/modes.js';
+import { useMode } from '../context/ModeContext.jsx';
+import ChatPanel from '../components/workspace/ChatPanel.jsx';
+import Inbox from '../components/workspace/Inbox.jsx';
+import Dictation from '../components/workspace/Dictation.jsx';
 import { subscribeToProjects, updateProject, isLocalId, createProject } from '../lib/projects.js';
 import { relativeDate } from '../lib/format.js';
 import CollaborativeEditor from '../components/CollaborativeEditor.jsx';
@@ -19,16 +23,19 @@ import { XrayIconButton } from '../components/xray/XrayButton.jsx';
 
 const PANELS = [
   { id: 'assistant', label: 'Assistant', icon: Sparkles },
+  { id: 'chat', label: 'Chat', icon: MessageCircle },
   { id: 'materials', label: 'Materials', icon: Paperclip },
   { id: 'insights', label: 'Insights', icon: BarChart3 },
 ];
 
-export default function Workspace() {
+export default function Workspace({ inbox = false }) {
   const { docId } = useParams();
+  const [params] = useSearchParams();
+  const { mode, setMode } = useMode();
   const { user, loading, openAuth, signOut } = useAuth();
   const navigate = useNavigate();
   const [projects, setProjects] = useState(null);
-  const [panel, setPanel] = useState(null);
+  const [panel, setPanel] = useState(params.get('panel'));
   const [drawer, setDrawer] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [liveContent, setLiveContent] = useState('');
@@ -48,7 +55,13 @@ export default function Workspace() {
 
   useEffect(() => {
     if (active) setLiveContent(active.content || '');
+    // The workspace takes on the project's look: research or stories.
+    if (active && modeOfProject(active) !== mode) setMode(modeOfProject(active));
   }, [active?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (params.get('panel')) setPanel(params.get('panel'));
+  }, [docId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     document.title = active ? `${active.title} · Workspace` : 'Workspace · Research Nexus';
@@ -83,6 +96,7 @@ export default function Workspace() {
         <span className="hidden h-5 w-px bg-rule sm:block" />
         <span className="truncate text-sm text-ink-2">
           <Link to="/workspace" className="hover:text-ink">Workspace</Link>
+          {inbox && <span className="text-ink-3"> / <span className="text-ink">Updates</span></span>}
           {active && <span className="text-ink-3"> / </span>}
           {active && <span className="text-ink">{active.title}</span>}
         </span>
@@ -111,8 +125,14 @@ export default function Workspace() {
         <aside
           className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-rule bg-surface transition-transform lg:static lg:z-0 lg:w-64 lg:translate-x-0 ${drawer ? 'translate-x-0' : '-translate-x-full'}`}
         >
+          <Link
+            to="/workspace/inbox"
+            className={`mx-2 mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${inbox ? 'bg-sunken font-medium' : 'hover:bg-sunken/60'}`}
+          >
+            <InboxIcon className="h-4 w-4" /> Updates
+          </Link>
           <div className="flex items-center justify-between px-4 pb-2 pt-4">
-            <p className="eyebrow">Your projects</p>
+            <p className="eyebrow">Your work</p>
             <span className="flex gap-1">
               <Link to="/new" className="icon-btn h-7 w-7" title="New project"><Plus className="h-4 w-4" /></Link>
               <button className="icon-btn h-7 w-7 lg:hidden" onClick={() => setDrawer(false)} aria-label="Close"><X className="h-4 w-4" /></button>
@@ -132,7 +152,7 @@ export default function Workspace() {
                   <span className="truncate text-sm font-medium">{p.title || 'Untitled'}</span>
                 </span>
                 <span className="mt-1 flex items-center justify-between">
-                  <StageMeter stage={p.stage || 'idea'} showLabel={false} />
+                  <StageMeter stage={p.stage || MODES[modeOfProject(p)].stages[0].id} showLabel={false} />
                   <span className="font-mono text-[0.6rem] text-ink-3">{relativeDate(p.updatedAt)}</span>
                 </span>
               </Link>
@@ -152,7 +172,8 @@ export default function Workspace() {
 
         {/* Main */}
         <main className="min-w-0 flex-1">
-          {!docId && <Dashboard user={user} projects={projects} />}
+          {inbox && <Inbox user={user} projects={projects} />}
+          {!docId && !inbox && <Dashboard user={user} projects={projects} />}
           {docId && projects !== null && !active && (
             <div className="flex h-full flex-col items-center justify-center p-8 text-center">
               <p className="display text-2xl">Project not found</p>
@@ -168,10 +189,16 @@ export default function Workspace() {
               user={user}
               initialContent={active.content || ''}
               title={active.title}
+              placeholder={MODES[modeOfProject(active)].copy.editorPlaceholder}
               onContentChange={setLiveContent}
               showComments={panel === 'comments'}
               onToggleComments={() => togglePanel('comments')}
-              toolbarSlot={<MetaControls project={active} onChange={setMeta} />}
+              toolbarSlot={
+                <>
+                  <MetaControls project={active} onChange={setMeta} />
+                  <Dictation onText={(t) => editorRef.current?.insertText(t)} />
+                </>
+              }
             />
           )}
         </main>
@@ -184,8 +211,9 @@ export default function Workspace() {
               <button onClick={() => setPanel(null)} className="icon-btn h-7 w-7" aria-label="Close panel"><X className="h-4 w-4" /></button>
             </div>
             <div className="min-h-0 flex-1">
-              {panel === 'assistant' && <AssistantPanel content={liveContent} onInsert={(html) => editorRef.current?.insertHtml(html)} />}
-              {panel === 'materials' && <MaterialsPanel project={active} user={user} onUpload={() => setUploadOpen(true)} />}
+              {panel === 'assistant' && <AssistantPanel mode={modeOfProject(active)} content={liveContent} onInsert={(html) => editorRef.current?.insertHtml(html)} />}
+              {panel === 'chat' && <ChatPanel project={active} user={user} />}
+              {panel === 'materials' && <MaterialsPanel project={active} user={user} types={MODES[modeOfProject(active)].materials} onUpload={() => setUploadOpen(true)} />}
               {panel === 'insights' && <InsightsPanel project={active} content={liveContent} />}
             </div>
           </aside>
@@ -215,11 +243,11 @@ function MetaControls({ project, onChange }) {
       <label className="sr-only" htmlFor="stage-select">Stage</label>
       <select
         id="stage-select"
-        value={project.stage || 'idea'}
+        value={project.stage || MODES[modeOfProject(project)].stages[0].id}
         onChange={(e) => onChange({ stage: e.target.value })}
         className="rounded-full border border-rule bg-surface py-0.5 pl-2.5 pr-7 text-xs text-ink-2 focus:border-accent focus:outline-none"
       >
-        {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+        {MODES[modeOfProject(project)].stages.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
       </select>
       <button
         onClick={() => onChange({ isPublic: !project.isPublic })}
@@ -236,9 +264,10 @@ function MetaControls({ project, onChange }) {
 
 function Dashboard({ user, projects }) {
   const navigate = useNavigate();
+  const { mode, m } = useMode();
   const recent = (projects || []).slice(0, 5);
   const quickStart = async (t) => {
-    const { id } = await createProject(user, { title: t.name === 'Blank page' ? 'Untitled' : `New ${t.name.toLowerCase()}`, template: t.id, content: t.content });
+    const { id } = await createProject(user, { title: t.sections.length === 0 ? 'Untitled' : `New ${t.name.toLowerCase()}`, template: t.id, content: t.content, mode, stage: m.stages[0].id });
     navigate(`/workspace/${id}`);
   };
   return (
@@ -257,7 +286,7 @@ function Dashboard({ user, projects }) {
                   <Link to={`/workspace/${p.id}`} className="flex items-center justify-between gap-4 px-5 py-4 hover:bg-sunken/50">
                     <span className="min-w-0">
                       <span className="block truncate font-serif text-lg">{p.title || 'Untitled'}</span>
-                      <span className="mt-1 block"><StageMeter stage={p.stage || 'idea'} /></span>
+                      <span className="mt-1 block"><StageMeter stage={p.stage || MODES[modeOfProject(p)].stages[0].id} /></span>
                     </span>
                     <span className="shrink-0 font-mono text-2xs text-ink-3">{relativeDate(p.updatedAt)}</span>
                   </Link>
@@ -266,16 +295,16 @@ function Dashboard({ user, projects }) {
             </ul>
           ) : (
             <div className="rounded-xl border border-dashed border-rule px-6 py-10 text-center">
-              <p className="font-serif text-xl">Your first project starts with a question.</p>
-              <Link to="/new" className="btn-primary mt-5"><Plus className="h-4 w-4" /> Start a project</Link>
+              <p className="font-serif text-xl">{mode === 'stories' ? 'Your first story starts with a spark.' : 'Your first project starts with a question.'}</p>
+              <Link to="/new" className="btn-primary mt-5"><Plus className="h-4 w-4" /> Start a {m.noun}</Link>
             </div>
           )}
         </section>
 
         <section className="mt-10">
-          <p className="eyebrow mb-3">Quick start from a template</p>
+          <p className="eyebrow mb-3">Quick start · {m.label.toLowerCase()} templates</p>
           <div className="grid gap-2.5 sm:grid-cols-3">
-            {TEMPLATES.map((t) => (
+            {m.templates.map((t) => (
               <button key={t.id} onClick={() => quickStart(t)} className="rounded-xl border border-rule bg-surface p-4 text-left transition-colors hover:border-ink-3">
                 <span className="font-mono text-2xs uppercase tracking-[0.12em] text-ink-3">{t.kind}</span>
                 <span className="display mt-1 block text-lg">{t.name}</span>
@@ -283,7 +312,7 @@ function Dashboard({ user, projects }) {
             ))}
           </div>
           <p className="mt-3 text-xs text-ink-3">
-            Want to set fields, licence and visibility first? <Link to="/new" className="text-accent hover:underline">Use the full setup</Link>.
+            Want to set {m.fieldsLabel.toLowerCase()}, licence and visibility first? <Link to="/new" className="text-accent hover:underline">Use the full setup</Link>.
           </p>
         </section>
       </div>

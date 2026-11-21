@@ -16,7 +16,9 @@ Firebase (research-e9734): Auth, Firestore, Storage — called directly from the
 - **OpenAlex** (real papers for Find): create an account at <https://openalex.org>, then copy the key
   from Settings → API. The free allowance is $1/day of usage, roughly 1,000 searches.
 
-Keep both out of git — Render asks for them.
+Keep both out of git — Render asks for them. The same Groq key also powers **dictation**
+(Whisper speech-to-text). The Stories sources — Open Library, Project Gutenberg (via Gutendex)
+and Datamuse — need no keys.
 
 Why these: Groq's free tier gives about 1,000 requests a day on an open model, and Groq says it doesn't
 retain prompts by default. Gemini's free tier now allows only a handful of requests a day, Google uses
@@ -51,7 +53,8 @@ In the [Firebase console](https://console.firebase.google.com/project/research-e
 - **Authentication → Sign-in method**: enable **Google** and **Email/Password**.
   Enable **Anonymous** too if you want “Try it as a guest” to create real accounts
   (otherwise guests get a local demo session saved in their browser).
-- Deploy the database rules and indexes from this repo:
+- Deploy the database rules and indexes from this repo (again after this update — project chat
+  needs the new `messages` rule and index):
   ```bash
   npx firebase-tools deploy --only firestore:rules,firestore:indexes --project research-e9734
   ```

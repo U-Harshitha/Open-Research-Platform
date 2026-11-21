@@ -2,8 +2,12 @@ import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, Check, GitFork, Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { DISCIPLINES, LICENSES, STAGES, TEMPLATES, templateById } from '../data/catalog.js';
-import { projectBySlug } from '../data/samples.js';
+import { LICENSES, TEMPLATES as R_TEMPLATES } from '../data/catalog.js';
+import { STORY_TEMPLATES } from '../data/stories.js';
+import { PROJECT_BY_SLUG as projectBySlug, modeOfProject } from '../data/modes.js';
+import { useMode } from '../context/ModeContext.jsx';
+
+const templateById = Object.fromEntries([...R_TEMPLATES, ...STORY_TEMPLATES].map((t) => [t.id, t]));
 import { useAuth } from '../context/AuthContext.jsx';
 import { createProject } from '../lib/projects.js';
 import { DisciplineDot } from '../components/ui/DisciplineTag.jsx';
@@ -13,15 +17,19 @@ const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt
 export default function NewProject() {
   const [params] = useSearchParams();
   const from = projectBySlug[params.get('from')];
+  const { mode, m } = useMode();
+  const DISCIPLINES = m.fields;
+  const STAGES = m.stages;
+  const TEMPLATES = m.templates;
   const { user, openAuth } = useAuth();
   const navigate = useNavigate();
 
-  const [template, setTemplate] = useState(from ? 'replication' : 'imrad');
+  const [template, setTemplate] = useState(from ? (modeOfProject(from) === 'stories' ? 'short-story' : 'replication') : m.templates[0].id);
   const [form, setForm] = useState({
-    title: from ? `Building on: ${from.title}` : '',
+    title: from ? `${m.labels.buildOn === 'Remix' ? 'Remix of' : 'Building on'}: ${from.title}` : '',
     question: '',
     disciplines: from ? [...from.disciplines] : [],
-    stage: 'idea',
+    stage: m.stages[0].id,
     license: 'cc-by-4.0',
     isPublic: true,
     seeking: '',
@@ -53,6 +61,7 @@ export default function NewProject() {
         title: form.title.trim(),
         seeking: form.seeking.split(',').map((s) => s.trim()).filter(Boolean),
         buildsOn: from?.slug || null,
+        mode,
         template,
         content,
       });
@@ -68,17 +77,15 @@ export default function NewProject() {
 
   return (
     <form onSubmit={submit} className="mx-auto max-w-page px-4 py-10 sm:px-6 lg:py-14">
-      <p className="eyebrow">New project</p>
-      <h1 className="display mt-3 text-4xl sm:text-5xl">Start with a question.</h1>
-      <p className="mt-3 max-w-2xl text-lg text-ink-2">
-        You don’t need data, funding or a finished draft. Pick a structure, say what you’re asking, and decide who can see it. Everything can change later.
-      </p>
+      <p className="eyebrow">New {m.noun}</p>
+      <h1 className="display mt-3 text-4xl sm:text-5xl">{m.copy.newTitle}</h1>
+      <p className="mt-3 max-w-2xl text-lg text-ink-2">{m.copy.newIntro} Everything can change later.</p>
 
       {from && (
         <div className="mt-8 flex items-start gap-3 rounded-xl border border-rule bg-surface p-4 text-sm">
           <GitFork className="mt-0.5 h-4 w-4 text-ink-3" />
           <p>
-            Building on <Link to={`/p/${from.slug}`} className="font-medium underline decoration-rule underline-offset-2">{from.title}</Link>.
+            {m.labels.buildOn === 'Remix' ? 'Remixing' : 'Building on'} <Link to={`/p/${from.slug}`} className="font-medium underline decoration-rule underline-offset-2">{from.title}</Link>.
             The original will be linked and credited on your project.
           </p>
         </div>
@@ -112,17 +119,17 @@ export default function NewProject() {
 
         <div className="space-y-8">
           <fieldset className="space-y-4">
-            <legend className="eyebrow mb-4">2 · The question</legend>
+            <legend className="eyebrow mb-4">2 · {mode === 'stories' ? 'The premise' : 'The question'}</legend>
             <div>
               <label htmlFor="title" className="label">Working title</label>
-              <input id="title" value={form.title} onChange={(e) => set('title', e.target.value)} className="input-field font-serif text-lg" placeholder="e.g. Heat exposure and asthma in children" />
+              <input id="title" value={form.title} onChange={(e) => set('title', e.target.value)} className="input-field font-serif text-lg" placeholder={m.copy.titleExample} />
             </div>
             <div>
-              <label htmlFor="question" className="label">In one sentence, what are you asking?</label>
-              <textarea id="question" value={form.question} onChange={(e) => set('question', e.target.value)} rows={2} className="input-field resize-none" placeholder="Shown on Explore. Write it so someone from another field understands." />
+              <label htmlFor="question" className="label">{m.copy.questionLabel}</label>
+              <textarea id="question" value={form.question} onChange={(e) => set('question', e.target.value)} rows={2} className="input-field resize-none" placeholder={m.copy.questionPlaceholder} />
             </div>
             <div>
-              <p className="label">Fields <span className="text-ink-3">(up to 3 — mixing is encouraged)</span></p>
+              <p className="label">{m.fieldsLabel} <span className="text-ink-3">({m.copy.fieldsHint})</span></p>
               <div className="flex flex-wrap gap-1.5">
                 {DISCIPLINES.map((d) => {
                   const on = form.disciplines.includes(d.id);
@@ -161,7 +168,7 @@ export default function NewProject() {
             <p className="text-xs text-ink-3">{LICENSES.find((l) => l.id === form.license)?.blurb}</p>
             <div>
               <label htmlFor="seeking" className="label">Looking for collaborators? <span className="text-ink-3">(optional, comma-separated)</span></label>
-              <input id="seeking" value={form.seeking} onChange={(e) => set('seeking', e.target.value)} className="input-field" placeholder="e.g. Biostatistician, Field partner in Kenya" />
+              <input id="seeking" value={form.seeking} onChange={(e) => set('seeking', e.target.value)} className="input-field" placeholder={m.copy.seekingExample} />
             </div>
             <div className="grid grid-cols-2 gap-2">
               {[

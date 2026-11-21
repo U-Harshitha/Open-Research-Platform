@@ -46,6 +46,7 @@ export async function createProject(user, data) {
     stage: data.stage || 'idea',
     license: data.license || 'cc-by-4.0',
     template: data.template || 'blank',
+    mode: data.mode || 'research',
     seeking: data.seeking || [],
     buildsOn: data.buildsOn || null,
     isPublic: !!data.isPublic,

@@ -40,7 +40,7 @@ const QUILL_FORMATS = [
 ];
 
 const CollaborativeEditor = forwardRef(function CollaborativeEditor(
-  { documentId, user, onContentChange, initialContent = '', title = 'Untitled', onTitleChange, showComments, onToggleComments, toolbarSlot },
+  { documentId, user, onContentChange, initialContent = '', title = 'Untitled', onTitleChange, showComments, onToggleComments, toolbarSlot, placeholder },
   ref
 ) {
   const local = isLocalId(documentId) || !db || user?.isDemo;
@@ -76,6 +76,17 @@ const CollaborativeEditor = forwardRef(function CollaborativeEditor(
       quill.formatLine(index, 1, { header: false, list: false, blockquote: false, 'code-block': false }, 'user');
       quill.clipboard.dangerouslyPasteHTML(index, html, 'user');
       quill.setSelection(index, 0, 'silent');
+    },
+    // Dictation: plain text at the cursor, continuing the current sentence.
+    insertText(text) {
+      const quill = quillRef.current?.getEditor();
+      if (!quill || !text) return;
+      const range = quill.getSelection(true);
+      const index = range ? range.index : quill.getLength() - 1;
+      const before = index > 0 ? quill.getText(index - 1, 1) : '\n';
+      const chunk = (/[\s\n]/.test(before) ? '' : ' ') + text.trim() + ' ';
+      quill.insertText(index, chunk, 'user');
+      quill.setSelection(index + chunk.length, 0, 'silent');
     },
     getText: () => quillRef.current?.getEditor().getText() || '',
   }));
@@ -321,7 +332,7 @@ const CollaborativeEditor = forwardRef(function CollaborativeEditor(
             onChangeSelection={handleSelectionChange}
             modules={QUILL_MODULES}
             formats={QUILL_FORMATS}
-            placeholder="Start with the question you’re trying to answer…"
+            placeholder={placeholder || 'Start writing…'}
           />
         </div>
       </div>

@@ -218,6 +218,18 @@ const SECTIONS = [
     name: 'find',
   },
   {
+    title: 'One engine, two vocabularies',
+    body: 'Research and Stories are the same app. Every page reads its words, stages, credits and templates from one config per mode, and the theme swaps a handful of CSS variables — fonts, paper, ink. Switching animates the colours instead of reloading.',
+    file: 'frontend/src/data/modes.js',
+    name: 'modes',
+  },
+  {
+    title: 'Dictation for free',
+    body: 'The browser records audio, the Flask service forwards it to Whisper on Groq’s free tier, and the text lands at the cursor. If that service is asleep or missing, it falls back to the browser’s own speech recognition.',
+    file: 'frontend/src/components/workspace/Dictation.jsx',
+    name: 'dictation',
+  },
+  {
     title: 'Honest numbers',
     body: 'Insights are counted from the manuscript itself — words, sections, citations like [1], figures. No invented “impact scores”.',
     file: 'frontend/src/lib/format.js',
@@ -254,8 +266,8 @@ function Inside() {
 const WHY = [
   ['A static app that is still real-time', 'The frontend is plain files on a CDN. Live collaboration comes from Firestore listeners: the browser talks to Google directly, so there is no socket server to run or keep awake.'],
   ['Nothing real-time goes through the proxy', 'Vercel rewrites can’t carry WebSockets — Hangman has to fall back to long-polling behind them. Here only HTML, JS and CSS pass through the rewrite; live data never does.'],
-  ['Python only where a secret is needed', 'The Flask service exists to hold the AI and OpenAlex keys and talk to them. Everything else runs in the browser, so the server stays tiny and can sleep on the free tier.'],
-  ['Free AI that can’t invent citations', 'Groq’s free tier runs an open model for drafting and review; OpenAlex supplies real papers for Find. The model summarises sources, it doesn’t produce them.'],
+  ['Python only where a secret is needed', 'The Flask service holds the AI and OpenAlex keys, transcribes dictation, and proxies the book and word APIs so the browser never depends on their CORS settings. Everything else runs in the browser, so the server stays tiny and can sleep on the free tier.'],
+  ['Free AI that can’t invent citations', 'Groq’s free tier runs an open model for drafting and review, and Whisper for dictation. OpenAlex supplies real papers and Open Library real books. The model summarises sources; it doesn’t produce them.'],
   ['$0 at zero traffic', 'Render static site + Render free web service + Firebase Spark + Groq and OpenAlex free tiers.'],
 ];
 

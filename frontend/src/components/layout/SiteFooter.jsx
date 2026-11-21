@@ -3,20 +3,23 @@ import { Link } from 'react-router-dom';
 import { ArrowUpRight } from 'lucide-react';
 import Logo from '../ui/Logo.jsx';
 import { PORTFOLIO_URL } from '../../lib/config.js';
-
-const COLS = [
-  { title: 'Research', links: [['Explore projects', '/explore'], ['Open calls', '/collaborate'], ['Start a project', '/new']] },
-  { title: 'Learn', links: [['Your first paper', '/guides/first-paper'], ['Open peer review', '/guides/peer-review'], ['Data & licences', '/guides/open-data-licences']] },
-];
+import { useMode } from '../../context/ModeContext.jsx';
 
 export default function SiteFooter() {
+  const { m } = useMode();
+  const COLS = [
+    { title: m.label, links: [[`Explore ${m.nouns}`, '/explore'], ['Library', '/library'], ['Open calls', '/collaborate'], [`Start a ${m.noun}`, '/new']] },
+    { title: 'Learn', links: m.guides.slice(0, 3).map((g) => [g.title, `/guides/${g.slug}`]) },
+  ];
   return (
     <footer className="mt-24 border-t border-rule">
       <div className="mx-auto grid max-w-page gap-10 px-4 py-12 sm:px-6 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
         <div>
           <Logo />
           <p className="mt-4 max-w-xs text-sm leading-relaxed text-ink-2">
-            An open home for research — drafted together, versioned in public, and free to build on.
+            {m.id === 'research'
+              ? 'An open home for research — drafted together, versioned in public, and free to build on.'
+              : 'A desk for stories — written with company, read early, and free to remix when you say so.'}
           </p>
         </div>
         {COLS.map((c) => (
@@ -48,7 +51,7 @@ export default function SiteFooter() {
       <div className="border-t border-rule">
         <div className="mx-auto flex max-w-page flex-wrap items-center justify-between gap-2 px-4 py-4 font-mono text-2xs uppercase tracking-[0.12em] text-ink-3 sm:px-6">
           <span>Open Research Nexus · MIT licensed</span>
-          <span>Contributor roles follow CRediT · Content CC BY 4.0 by default</span>
+          <span>{m.id === 'research' ? 'Contributor roles follow CRediT · Content CC BY 4.0 by default' : 'Credits on every story · You choose the licence'}</span>
         </div>
       </div>
     </footer>

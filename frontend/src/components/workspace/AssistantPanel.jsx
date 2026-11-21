@@ -1,14 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowRight, FileSearch, Loader2, PenLine, Search, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowRight, BookOpenText, FileSearch, Loader2, PenLine, Search, ShieldCheck, Type } from 'lucide-react';
+import { Words } from '../../pages/Library.jsx';
 import { API_CONFIG } from '../../lib/config.js';
 import { stripHtml } from '../../lib/format.js';
 
-const MODES = [
-  { id: 'search', label: 'Find', icon: Search, hint: 'Searches 250M+ scholarly works on OpenAlex, then summarises only the papers it found — every citation is real.' },
-  { id: 'complete', label: 'Draft', icon: PenLine, hint: 'Describe a paragraph; review it before inserting.' },
-  { id: 'analyze', label: 'Review', icon: FileSearch, hint: 'Get structural feedback on the current draft.' },
-  { id: 'plagiarism', label: 'Integrity', icon: ShieldCheck, hint: 'Flag passages that may need a citation.' },
-];
+const TOOLS = {
+  research: [
+    { id: 'search', label: 'Find', icon: Search, hint: 'Searches 250M+ scholarly works on OpenAlex, then summarises only the papers it found — every citation is real.' },
+    { id: 'complete', label: 'Draft', icon: PenLine, hint: 'Describe a paragraph; review it before inserting.' },
+    { id: 'analyze', label: 'Review', icon: FileSearch, hint: 'Get structural feedback on the current draft.' },
+    { id: 'plagiarism', label: 'Integrity', icon: ShieldCheck, hint: 'Flag passages that may need a citation.' },
+  ],
+  stories: [
+    { id: 'search', label: 'Comps', icon: BookOpenText, hint: 'Comparable titles from Open Library for your premise, and what each could teach you.' },
+    { id: 'complete', label: 'Draft', icon: PenLine, hint: 'Ask for the next beat or a rewrite; it matches your voice and tense. Edit freely.' },
+    { id: 'analyze', label: 'Beta read', icon: FileSearch, hint: 'Honest, kind notes from an AI beta reader: hooks, pacing, characters.' },
+    { id: 'words', label: 'Words', icon: Type, hint: 'Synonyms, rhymes and better adjectives (Datamuse). Click to copy.' },
+  ],
+};
 
 async function call(endpoint, body) {
   if (!API_CONFIG.BASE_URL && import.meta.env.PROD) throw new Error('NO_BACKEND');
@@ -27,7 +36,9 @@ async function call(endpoint, body) {
   return data;
 }
 
-export default function AssistantPanel({ content, onInsert }) {
+export default function AssistantPanel({ content, onInsert, mode: projectMode = 'research' }) {
+  const MODES = TOOLS[projectMode] || TOOLS.research;
+  const stories = projectMode === 'stories';
   const [mode, setMode] = useState('search');
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -51,9 +62,9 @@ export default function AssistantPanel({ content, onInsert }) {
     slowTimer.current = setTimeout(() => setSlow(true), 6000);
     try {
       let data;
-      if (mode === 'search') data = await call(API_CONFIG.ENDPOINTS.SEARCH, { query: input, context: stripHtml(content).slice(0, 4000) });
-      if (mode === 'complete') data = await call(API_CONFIG.ENDPOINTS.COMPLETE, { content, prompt: input, style: 'academic' });
-      if (mode === 'analyze') data = await call(API_CONFIG.ENDPOINTS.ANALYZE, { content, type: 'comprehensive' });
+      if (mode === 'search') data = await call(API_CONFIG.ENDPOINTS.SEARCH, { query: input, context: stripHtml(content).slice(0, 4000), mode: projectMode });
+      if (mode === 'complete') data = await call(API_CONFIG.ENDPOINTS.COMPLETE, { content, prompt: input, style: stories ? 'fiction' : 'academic' });
+      if (mode === 'analyze') data = await call(API_CONFIG.ENDPOINTS.ANALYZE, { content, type: stories ? 'beta' : 'comprehensive' });
       if (mode === 'plagiarism') data = await call(API_CONFIG.ENDPOINTS.PLAGIARISM, { content });
       setResults((r) => ({ ...r, [mode]: data }));
     } catch (e) {
@@ -92,7 +103,9 @@ export default function AssistantPanel({ content, onInsert }) {
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
         <p className="text-xs text-ink-3">{current.hint}</p>
 
-        {needsInput ? (
+        {mode === 'words' ? (
+          <Words compact />
+        ) : needsInput ? (
           <div>
             <textarea
               value={input}
@@ -100,20 +113,24 @@ export default function AssistantPanel({ content, onInsert }) {
               onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === 'Enter' && !disabled && run()}
               rows={mode === 'complete' ? 4 : 2}
               className="input-field resize-none"
-              placeholder={mode === 'search' ? 'e.g. What is known about heat and paediatric asthma?' : 'e.g. A paragraph on limitations of satellite temperature data'}
+              placeholder={
+                stories
+                  ? mode === 'search' ? 'e.g. a lighthouse that guides ships into the past' : 'e.g. Write the next beat: Nell climbs the tower at midnight'
+                  : mode === 'search' ? 'e.g. What is known about heat and paediatric asthma?' : 'e.g. A paragraph on limitations of satellite temperature data'
+              }
             />
             <button onClick={run} disabled={disabled} className="btn-primary btn-sm mt-2 w-full">
               {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowRight className="h-3.5 w-3.5" />}
-              {mode === 'search' ? 'Search' : 'Draft paragraph'}
+              {mode === 'search' ? (stories ? 'Find comps' : 'Search') : stories ? 'Write it' : 'Draft paragraph'}
             </button>
           </div>
         ) : (
           <button onClick={run} disabled={disabled} className="btn-primary btn-sm w-full">
             {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {mode === 'analyze' ? 'Review my draft' : 'Check citations'}
+            {mode === 'analyze' ? (stories ? 'Read my draft' : 'Review my draft') : 'Check citations'}
           </button>
         )}
-        {!needsInput && !hasText && <p className="text-xs text-ink-3">Write a little more first.</p>}
+        {!needsInput && mode !== 'words' && !hasText && <p className="text-xs text-ink-3">Write a little more first.</p>}
 
         {slow && loading && (
           <p className="rounded-lg bg-sunken px-3 py-2 text-xs text-ink-2">Waking the AI service up — the first request after a quiet spell can take up to a minute.</p>
@@ -129,11 +146,12 @@ export default function AssistantPanel({ content, onInsert }) {
             )}
             {papers.length > 0 && (
               <div>
-                <p className="eyebrow mb-2">Papers · OpenAlex</p>
+                <p className="eyebrow mb-2">{stories ? 'Books · Open Library' : 'Papers · OpenAlex'}</p>
                 <ol className="space-y-2">
                   {papers.map((p) => (
                     <li key={p.n} className="rounded-lg border border-rule p-3">
                       <p className="flex gap-2 text-sm leading-snug">
+                        {p.cover && <img src={p.cover} alt="" loading="lazy" className="h-12 w-8 shrink-0 rounded-sm object-cover" />}
                         <span className="font-mono text-2xs text-ink-3">[{p.n}]</span>
                         <a href={p.url} target="_blank" rel="noopener noreferrer" className="font-medium hover:text-accent hover:underline">{p.title}</a>
                       </p>

@@ -118,11 +118,19 @@ and the Flask API, and the portfolio's Vercel rewrites serve it at
 | `/research/` | Landing page |
 | `/research/explore` | Discover projects by field, stage, and who's seeking collaborators |
 | `/research/p/:slug` | Project page: abstract, CRediT contributors, open questions, data & materials, open reviews, versions, BibTeX |
+| `/research/library` | Research: OpenAlex papers (filters, references, cited-by, citations per year, watch for new citations), authors, topic trends. Stories: comparable titles (Open Library), classics (Gutenberg), Words (Datamuse) |
 | `/research/collaborate` | Open calls for expertise across disciplines |
 | `/research/guides` | Short guides for first-time research writers |
 | `/research/u/:handle` | Researcher profile |
 | `/research/new` | Start a project from a template |
-| `/research/workspace` | Editor with real-time sync, comments, AI assistant, materials and insights |
+| `/research/workspace` | Editor with real-time sync, comments, per-project chat, dictation, AI assistant, materials and insights |
+| `/research/workspace/inbox` | Mail-style Updates: chat, comments and new citations of watched papers |
+
+### Two modes: Research and Stories
+A switch in the header flips the whole site between **Research** (papers, CRediT roles, OpenAlex)
+and **Stories** (fiction, poetry and memoir: genres, drafts, beta notes, remixes, Open Library).
+Same engine and accounts; each mode has its own vocabulary, templates, sample content and theme.
+Opening a project switches to its mode. `?mode=stories` in any URL selects it too.
 
 Explore, project, collaborate and profile pages currently show clearly labelled **sample data**
 (`frontend/src/data/samples.js`) until public projects are queried from Firestore.

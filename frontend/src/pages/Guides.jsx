@@ -1,18 +1,24 @@
 import React from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
-import { GUIDES, guideBySlug } from '../data/guides.js';
+import { GUIDES as R_GUIDES } from '../data/guides.js';
+import { STORY_GUIDES } from '../data/stories.js';
+import { useMode } from '../context/ModeContext.jsx';
+import Reveal from '../components/motion/Reveal.jsx';
+
+const guideBySlug = Object.fromEntries([...R_GUIDES.map((g) => [g.slug, { ...g, mode: 'research' }]), ...STORY_GUIDES.map((g) => [g.slug, { ...g, mode: 'stories' }])]);
 import PageHeader from '../components/ui/PageHeader.jsx';
 import NotFound from './NotFound.jsx';
 
 export default function Guides() {
-  const [first, ...rest] = GUIDES;
+  const { m } = useMode();
+  const [first, ...rest] = m.guides;
   return (
     <>
       <PageHeader
         eyebrow="Guides"
-        title="Learn to write research"
-        intro="Short, practical guides for students, independent researchers and anyone writing their first paper. Five minutes each, no jargon you can avoid."
+        title={m.copy.guidesTitle}
+        intro={m.copy.guidesIntro}
       />
       <div className="mx-auto max-w-page px-4 py-12 sm:px-6">
         <Link to={`/guides/${first.slug}`} className="group grid gap-6 rounded-2xl border border-rule bg-surface p-7 transition-shadow hover:shadow-lift sm:p-10 md:grid-cols-[1fr_auto] md:items-end">
@@ -24,12 +30,14 @@ export default function Guides() {
           <span className="btn-primary self-start md:self-end">Read <ArrowRight className="h-4 w-4" /></span>
         </Link>
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {rest.map((g) => (
-            <Link key={g.slug} to={`/guides/${g.slug}`} className="group flex flex-col rounded-xl border border-rule bg-surface p-6 transition-shadow hover:shadow-lift">
+          {rest.map((g, i) => (
+            <Reveal key={g.slug} delay={i}>
+            <Link to={`/guides/${g.slug}`} className="group flex flex-col rounded-xl border border-rule bg-surface p-6 transition-shadow hover:shadow-lift">
               <p className="eyebrow">{g.level} · {g.minutes} min</p>
               <h3 className="display mt-3 text-xl leading-snug group-hover:text-accent">{g.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-ink-2">{g.summary}</p>
             </Link>
+            </Reveal>
           ))}
         </div>
       </div>
@@ -41,8 +49,9 @@ export function Guide() {
   const { slug } = useParams();
   const guide = guideBySlug[slug];
   if (!guide) return <NotFound />;
-  const i = GUIDES.indexOf(guide);
-  const next = GUIDES[(i + 1) % GUIDES.length];
+  const list = guide.mode === 'stories' ? STORY_GUIDES : R_GUIDES;
+  const i = list.findIndex((g) => g.slug === guide.slug);
+  const next = list[(i + 1) % list.length];
   return (
     <article className="mx-auto max-w-page px-4 pb-10 pt-10 sm:px-6 lg:pt-14">
       <Link to="/guides" className="inline-flex items-center gap-1.5 text-sm text-ink-2 hover:text-ink">

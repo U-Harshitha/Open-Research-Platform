@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   BookOpen,
@@ -12,13 +12,21 @@ import {
   GitFork,
   Image as ImageIcon,
   Lock,
+  Map as MapIcon,
   MessageSquare,
+  Mic,
+  Palette,
+  User,
   Plus,
   Users,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { LICENSES, MATERIAL_TYPES, disciplineById, stageById } from '../data/catalog.js';
-import { projectBySlug, researcherByHandle } from '../data/samples.js';
+import {
+  FIELD_BY_ID as disciplineById, LICENSES, MATERIALS_ALL as MATERIAL_TYPES, MODES, PEOPLE_BY_HANDLE as researcherByHandle,
+  PROJECT_BY_SLUG as projectBySlug, modeOfProject, stageInfo,
+} from '../data/modes.js';
+import { useMode } from '../context/ModeContext.jsx';
+import Cover from '../components/ui/Cover.jsx';
 import DisciplineTag from '../components/ui/DisciplineTag.jsx';
 import StageMeter from '../components/ui/StageMeter.jsx';
 import Avatar from '../components/ui/Avatar.jsx';
@@ -27,7 +35,11 @@ import { bibtexFor, compact, relativeDate } from '../lib/format.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import NotFound from './NotFound.jsx';
 
-const MATERIAL_ICON = { dataset: Database, code: Code2, protocol: FileText, paper: BookOpen, figure: ImageIcon, preregistration: Lock };
+const MATERIAL_ICON = {
+  dataset: Database, code: Code2, protocol: FileText, paper: BookOpen, figure: ImageIcon, preregistration: Lock,
+  character: User, map: MapIcon, outline: FileText, moodboard: Palette, research: BookOpen, audio: Mic,
+};
+const stageById = new Proxy({}, { get: (_, id) => stageInfo(id) });
 
 export default function Project() {
   const { slug } = useParams();
@@ -36,6 +48,14 @@ export default function Project() {
   const [following, setFollowing] = useState(false);
   const { user, openAuth } = useAuth();
   const navigate = useNavigate();
+  const { mode, setMode } = useMode();
+  const pmode = modeOfProject(project);
+  const L = MODES[pmode].labels;
+
+  // Viewing a story switches the site into Stories mode (and vice versa).
+  useEffect(() => {
+    if (project && pmode !== mode) setMode(pmode);
+  }, [project, pmode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!project) return <NotFound />;
 
@@ -45,10 +65,10 @@ export default function Project() {
 
   const tabs = [
     ['overview', 'Overview'],
-    ['questions', 'Open questions', project.questions.filter((q) => q.status === 'open').length],
-    ['materials', 'Data & materials', project.materials.length],
-    ['reviews', 'Reviews', project.reviews.length],
-    ['versions', 'Versions', project.versions.length],
+    ['questions', L.questions, project.questions.filter((q) => q.status === 'open').length],
+    ['materials', L.materials, project.materials.length],
+    ['reviews', L.reviews, project.reviews.length],
+    ['versions', L.versions, project.versions.length],
   ];
 
   return (
@@ -56,6 +76,9 @@ export default function Project() {
       <div className="border-b border-rule bg-surface">
         <div className="mx-auto max-w-page px-4 pt-10 sm:px-6 lg:pt-14">
           <SampleNotice className="mb-8 max-w-xl" />
+          <div className="grid items-end gap-8 md:grid-cols-[auto_1fr]">
+          <div className="hidden md:block animate-rise"><Cover project={project} size="md" /></div>
+          <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             {project.disciplines.map((d) => (
               <DisciplineTag key={d} id={d} as={Link} to={`/explore?field=${d}`} />
@@ -63,6 +86,8 @@ export default function Project() {
           </div>
           <h1 className="display mt-5 max-w-4xl text-[2.2rem] leading-[1.08] sm:text-5xl">{project.title}</h1>
           <p className="mt-4 max-w-3xl font-serif text-xl italic leading-relaxed text-ink-2">{project.question}</p>
+          </div>
+          </div>
 
           <div className="mt-7 flex flex-wrap items-center justify-between gap-5">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
@@ -96,10 +121,10 @@ export default function Project() {
                 <span className="font-mono text-2xs opacity-70">{compact(project.followers + (following ? 1 : 0))}</span>
               </button>
               <button
-                onClick={() => needAuth('Sign in to build on this project.', () => navigate(`/new?from=${project.slug}`))}
+                onClick={() => needAuth(`Sign in to ${L.buildOn.toLowerCase()} this ${MODES[pmode].noun}.`, () => navigate(`/new?from=${project.slug}`))}
                 className="btn-secondary"
               >
-                <GitFork className="h-4 w-4" /> Build on <span className="font-mono text-2xs opacity-70">{project.builtOn}</span>
+                <GitFork className="h-4 w-4" /> {L.buildOn} <span className="font-mono text-2xs opacity-70">{project.builtOn}</span>
               </button>
             </div>
           </div>
@@ -117,23 +142,23 @@ export default function Project() {
 
       <div className="mx-auto grid max-w-page gap-12 px-4 py-10 sm:px-6 lg:grid-cols-[1fr_19rem]">
         <div className="min-w-0">
-          {tab === 'overview' && <Overview project={project} people={people} onTab={setTab} />}
-          {tab === 'questions' && <Questions project={project} onAsk={() => needAuth('Sign in to ask a question.', () => toast('Discussion threads are coming next.'))} />}
+          {tab === 'overview' && <Overview project={project} people={people} onTab={setTab} L={L} />}
+          {tab === 'questions' && <Questions project={project} L={L} onAsk={() => needAuth(`Sign in to start a ${L.question}.`, () => toast('Public threads are coming next — use the project chat for now.'))} />}
           {tab === 'materials' && <Materials project={project} />}
-          {tab === 'reviews' && <Reviews project={project} onReview={() => needAuth('Sign in to write a review.', () => toast('Open review submissions are coming next.'))} />}
+          {tab === 'reviews' && <Reviews project={project} L={L} onReview={() => needAuth(`Sign in to write a ${L.review}.`, () => toast('Public reviews are coming next.'))} />}
           {tab === 'versions' && <Versions project={project} />}
         </div>
-        <Sidebar project={project} people={people} license={license} />
+        <Sidebar project={project} people={people} license={license} L={L} />
       </div>
     </>
   );
 }
 
-function Overview({ project, people, onTab }) {
+function Overview({ project, people, onTab, L }) {
   return (
     <div className="space-y-12">
       <section>
-        <p className="eyebrow mb-4">Abstract</p>
+        <p className="eyebrow mb-4">{L.abstract}</p>
         <div className="prose-paper max-w-measure">
           {project.abstract.map((p, i) => <p key={i}>{p}</p>)}
         </div>
@@ -152,7 +177,7 @@ function Overview({ project, people, onTab }) {
       )}
 
       <section>
-        <p className="eyebrow mb-4">Contributors · CRediT roles</p>
+        <p className="eyebrow mb-4">{L.contributors}</p>
         <div className="divide-y divide-rule rounded-xl border border-rule bg-surface">
           {people.map(({ person, roles }) => (
             <div key={person.handle} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
@@ -176,7 +201,7 @@ function Overview({ project, people, onTab }) {
       {project.questions.length > 0 && (
         <section>
           <div className="mb-4 flex items-baseline justify-between">
-            <p className="eyebrow">Open questions</p>
+            <p className="eyebrow">{L.questions}</p>
             <button onClick={() => onTab('questions')} className="text-xs text-accent hover:underline">View all</button>
           </div>
           <QuestionList items={project.questions.slice(0, 2)} />
@@ -210,12 +235,12 @@ function QuestionList({ items }) {
   );
 }
 
-function Questions({ project, onAsk }) {
+function Questions({ project, onAsk, L }) {
   return (
     <div>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-lg text-sm text-ink-2">Doubts, gaps and next experiments — the research equivalent of issues. Anyone can ask; contributors resolve.</p>
-        <button onClick={onAsk} className="btn-secondary btn-sm"><Plus className="h-3.5 w-3.5" /> Ask a question</button>
+        <p className="max-w-lg text-sm text-ink-2">{L.question === 'thread' ? 'Plot holes, open questions and “what if…” ideas. Anyone can start one; the writers resolve them.' : 'Doubts, gaps and next experiments — the research equivalent of issues. Anyone can ask; contributors resolve.'}</p>
+        <button onClick={onAsk} className="btn-secondary btn-sm"><Plus className="h-3.5 w-3.5" /> New {L.question}</button>
       </div>
       {project.questions.length ? <QuestionList items={project.questions} /> : <Empty text="No questions yet. Be the first to ask one." />}
     </div>
@@ -245,12 +270,12 @@ function Materials({ project }) {
   );
 }
 
-function Reviews({ project, onReview }) {
+function Reviews({ project, onReview, L }) {
   return (
     <div>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-lg text-sm text-ink-2">Open peer review: reports and author responses are public. Reviewers may sign, and signed reviews count on their profile.</p>
-        <button onClick={onReview} className="btn-secondary btn-sm"><Plus className="h-3.5 w-3.5" /> Write a review</button>
+        <p className="max-w-lg text-sm text-ink-2">{L.review === 'beta note' ? 'Notes from first readers: what landed, what dragged, where they got lost. Signed notes count on the reader’s profile.' : 'Open peer review: reports and author responses are public. Reviewers may sign, and signed reviews count on their profile.'}</p>
+        <button onClick={onReview} className="btn-secondary btn-sm"><Plus className="h-3.5 w-3.5" /> Write a {L.review}</button>
       </div>
       {project.reviews.length ? (
         <div className="space-y-4">
@@ -258,7 +283,7 @@ function Reviews({ project, onReview }) {
             <article key={i} className="rounded-xl border border-rule bg-surface p-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-medium">{r.by}</p>
-                <span className={`rounded-full px-2.5 py-0.5 text-xs ${r.verdict === 'Accept' ? 'bg-accent-soft text-accent' : 'bg-sunken text-ink-2'}`}>{r.verdict}</span>
+                <span className={`rounded-full px-2.5 py-0.5 text-xs ${['Accept', 'Loved it'].includes(r.verdict) ? 'bg-accent-soft text-accent' : 'bg-sunken text-ink-2'}`}>{r.verdict}</span>
               </div>
               <p className="mt-3 font-serif text-lg leading-relaxed text-ink-2">{r.summary}</p>
             </article>
@@ -289,7 +314,7 @@ function Versions({ project }) {
   );
 }
 
-function Sidebar({ project, people, license }) {
+function Sidebar({ project, people, license, L }) {
   const [copied, setCopied] = useState(false);
   const bib = bibtexFor(project, people.map((p) => p.person.name));
   const copy = async () => {
@@ -305,7 +330,7 @@ function Sidebar({ project, people, license }) {
     ['Version', `${project.version} · ${relativeDate(project.updated)}`],
     ['Licence', license?.label],
     ['Stage', stageById[project.stage].label],
-    ['Built on by', `${project.builtOn} ${project.builtOn === 1 ? 'project' : 'projects'}`],
+    [L.builtOn, `${project.builtOn} ${project.builtOn === 1 ? MODES[modeOfProject(project)].noun : MODES[modeOfProject(project)].nouns}`],
   ];
   return (
     <aside className="min-w-0 space-y-8 lg:sticky lg:top-24 lg:self-start">
