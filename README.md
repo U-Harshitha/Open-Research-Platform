@@ -2,7 +2,7 @@
 
 🚀 **AI-Powered Research Collaboration Platform**
 
-A comprehensive, real-time research collaboration platform built with React, Python Flask, and Firebase, featuring AI-powered research assistance through Google Gemini.
+A real-time research collaboration platform built with React, Python Flask and Firebase. AI help runs on Groq's free tier, and Find searches real papers on OpenAlex.
 
 ## ✨ Features
 
@@ -31,7 +31,7 @@ A comprehensive, real-time research collaboration platform built with React, Pyt
 - Node.js (v18 or higher)
 - Python (v3.8 or higher)
 - Firebase project with Firestore and Storage enabled
-- Google Gemini API key
+- Free Groq and OpenAlex API keys (see DEPLOYMENT_GUIDE.md)
 
 ### Installation
 
@@ -59,7 +59,9 @@ A comprehensive, real-time research collaboration platform built with React, Pyt
    ```env
    GOOGLE_APPLICATION_CREDENTIALS=./firebase-service-account.json
    FIREBASE_PROJECT_ID=your-project-id
-   GEMINI_API_KEY=your-gemini-api-key
+   GROQ_API_KEY=your-groq-key
+   OPENALEX_API_KEY=your-openalex-key
+   ALLOWED_ORIGINS=http://localhost:3000
    FLASK_ENV=development
    ```
 
@@ -67,8 +69,9 @@ A comprehensive, real-time research collaboration platform built with React, Pyt
    - Download your Firebase service account JSON
    - Place it in `backend/firebase-service-account.json`
 
-6. **Update Firebase Config**
-   - Update `frontend/src/services/firebase.js` with your Firebase config
+6. **Frontend config (optional)**
+   - Copy `frontend/.env.example` to `frontend/.env.local` to set the AI service URL, base path or portfolio link
+   - Firebase web config lives in `frontend/src/config/firebase.js` (overridable with `VITE_FIREBASE_*`)
 
 ### Running the Application
 
@@ -84,12 +87,12 @@ A comprehensive, real-time research collaboration platform built with React, Pyt
    cd frontend
    npm run dev
    ```
-   Application runs on `http://localhost:3000`
+   Application runs on `http://localhost:3000/research/`
 
 ## 📖 Usage
 
 ### Getting Started
-1. Open `http://localhost:3000` in your browser
+1. Open `http://localhost:3000/research/` in your browser
 2. Sign in using Google, email/password, or continue as guest
 3. Create your first research document
 4. Invite collaborators and start researching together!
@@ -102,8 +105,24 @@ A comprehensive, real-time research collaboration platform built with React, Pyt
 - **Analytics**: View document insights and research metrics
 
 
-### Firebase Hosting
-```bash
-npm run build
-firebase deploy --only hosting
-```
+## 🌍 Going live
+
+Same setup as the Hangman game: a **Render Blueprint** (`render.yaml`) deploys the static site
+and the Flask API, and the portfolio's Vercel rewrites serve it at
+`harshitha-upadhyayula.vercel.app/research`. Step by step: **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)**.
+
+## 🗺️ Site map
+
+| Route | What it is |
+|---|---|
+| `/research/` | Landing page |
+| `/research/explore` | Discover projects by field, stage, and who's seeking collaborators |
+| `/research/p/:slug` | Project page: abstract, CRediT contributors, open questions, data & materials, open reviews, versions, BibTeX |
+| `/research/collaborate` | Open calls for expertise across disciplines |
+| `/research/guides` | Short guides for first-time research writers |
+| `/research/u/:handle` | Researcher profile |
+| `/research/new` | Start a project from a template |
+| `/research/workspace` | Editor with real-time sync, comments, AI assistant, materials and insights |
+
+Explore, project, collaborate and profile pages currently show clearly labelled **sample data**
+(`frontend/src/data/samples.js`) until public projects are queried from Firestore.

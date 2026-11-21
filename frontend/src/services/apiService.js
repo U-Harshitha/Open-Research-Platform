@@ -1,18 +1,6 @@
 import axios from 'axios';
 
-// API Configuration
-const API_CONFIG = {
-  BASE_URL: process.env.NODE_ENV === 'production' 
-    ? 'https://your-backend-api.com'
-    : 'http://localhost:5000',
-  ENDPOINTS: {
-    SEARCH: '/api/search',
-    COMPLETE: '/api/complete',
-    ANALYZE: '/api/analyze',
-    PLAGIARISM: '/api/plagiarism',
-    ASSET_ANALYSIS: '/api/asset-analysis'
-  }
-};
+import { API_CONFIG } from '../lib/config.js';
 
 // API Service for communicating with the Python backend
 class ApiService {

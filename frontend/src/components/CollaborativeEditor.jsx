@@ -1,301 +1,219 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
-import { 
-  doc, 
-  onSnapshot, 
-  updateDoc, 
+import {
+  doc,
+  onSnapshot,
+  updateDoc,
+  setDoc,
   serverTimestamp,
   collection,
   addDoc,
   query,
   where,
   orderBy,
-  deleteDoc
 } from 'firebase/firestore';
-import { db } from '../services/firebase.js';
-import { 
-  Users, 
-  MessageCircle, 
-  Save, 
-  Clock, 
-  Eye,
-  Edit3,
-  FileText,
-  Download,
-  Share2,
-  MoreHorizontal,
-  User
-} from 'lucide-react';
+import { Check, Download, Link2, Loader2, MessageSquare, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { db } from '../services/firebase.js';
+import { isLocalId, updateProject } from '../lib/projects.js';
+import Avatar from './ui/Avatar.jsx';
 
-const CollaborativeEditor = ({ 
-  documentId, 
-  user, 
-  onContentChange,
-  initialContent = '',
-  title = 'Untitled Document',
-  onTitleChange 
-}) => {
+const QUILL_MODULES = {
+  toolbar: {
+    container: [
+      [{ header: [1, 2, 3, false] }],
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ list: 'ordered' }, { list: 'bullet' }],
+      ['blockquote', 'code-block'],
+      [{ script: 'sub' }, { script: 'super' }],
+      ['link', 'image'],
+      ['clean'],
+    ],
+  },
+  history: { delay: 1000, maxStack: 200, userOnly: true },
+};
+
+const QUILL_FORMATS = [
+  'header', 'bold', 'italic', 'underline', 'strike', 'list', 'bullet',
+  'blockquote', 'code-block', 'script', 'link', 'image',
+];
+
+const CollaborativeEditor = forwardRef(function CollaborativeEditor(
+  { documentId, user, onContentChange, initialContent = '', title = 'Untitled', onTitleChange, showComments, onToggleComments, toolbarSlot },
+  ref
+) {
+  const local = isLocalId(documentId) || !db || user?.isDemo;
   const [content, setContent] = useState(initialContent);
   const [documentTitle, setDocumentTitle] = useState(title);
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
-  const [collaborators, setCollaborators] = useState([]);
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [comments, setComments] = useState([]);
-  const [showComments, setShowComments] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [selectedText, setSelectedText] = useState(null);
-  
+
   const quillRef = useRef(null);
   const saveTimeoutRef = useRef(null);
-  const presenceTimeoutRef = useRef(null);
+  const titleTimeoutRef = useRef(null);
+  const lastLocalContent = useRef(initialContent);
 
-  // Enhanced Quill modules with collaboration features
-  const quillModules = {
-    toolbar: {
-      container: [
-        [{ 'header': [1, 2, 3, false] }],
-        ['bold', 'italic', 'underline', 'strike'],
-        [{ 'color': [] }, { 'background': [] }],
-        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-        [{ 'indent': '-1'}, { 'indent': '+1' }],
-        [{ 'align': [] }],
-        ['blockquote', 'code-block'],
-        ['link', 'image', 'video'],
-        ['clean']
-      ]
-    },
-    history: {
-      delay: 1000,
-      maxStack: 100,
-      userOnly: false
-    }
-  };
-
-  const quillFormats = [
-    'header', 'bold', 'italic', 'underline', 'strike',
-    'color', 'background', 'list', 'bullet', 'indent',
-    'align', 'blockquote', 'code-block', 'link', 'image', 'video'
-  ];
-
-  // Real-time document synchronization
-  useEffect(() => {
-    if (!documentId || !db) return;
-
-    const docRef = doc(db, 'documents', documentId);
-    const unsubscribe = onSnapshot(docRef, (docSnapshot) => {
-      if (docSnapshot.exists()) {
-        const data = docSnapshot.data();
-        if (data.content !== content) {
-          setContent(data.content || '');
-        }
-        if (data.title !== documentTitle) {
-          setDocumentTitle(data.title || 'Untitled Document');
-        }
-        setLastSaved(data.updatedAt?.toDate());
-        setCollaborators(data.collaborators || []);
+  // Let the workspace insert AI drafts at the cursor.
+  useImperativeHandle(ref, () => ({
+    insertHtml(html) {
+      const quill = quillRef.current?.getEditor();
+      if (!quill) return;
+      // Insert as new paragraph(s) after the block holding the cursor, never mid-word.
+      const range = quill.getSelection(true);
+      let index = quill.getLength();
+      if (range) {
+        const [line] = quill.getLine(range.index + range.length);
+        if (line) index = quill.getIndex(line) + line.length();
       }
-    }, (error) => {
-      console.error('Error listening to document changes:', error);
-    });
+      index = Math.min(index, quill.getLength() - 1);
+      // Open an empty plain line first so the pasted blocks don't merge into the next heading.
+      quill.insertText(index, '\n', 'user');
+      quill.formatLine(index, 1, { header: false, list: false, blockquote: false, 'code-block': false }, 'user');
+      quill.clipboard.dangerouslyPasteHTML(index, html, 'user');
+      quill.setSelection(index, 0, 'silent');
+    },
+    getText: () => quillRef.current?.getEditor().getText() || '',
+  }));
 
-    return () => unsubscribe();
-  }, [documentId]);
-
-  // Real-time presence tracking
+  // xray:echo
+  // Remote changes from collaborators. Ignore echoes of our own saves.
   useEffect(() => {
-    if (!documentId || !user || !db) return;
+    if (local) return;
+    const unsub = onSnapshot(
+      doc(db, 'documents', documentId),
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        if (typeof data.content === 'string' && data.content !== lastLocalContent.current && !snap.metadata.hasPendingWrites) {
+          lastLocalContent.current = data.content;
+          setContent(data.content);
+          onContentChange?.(data.content);
+        }
+        if (data.title && document.activeElement?.id !== 'doc-title') setDocumentTitle(data.title);
+        if (data.updatedAt?.toDate) setLastSaved(data.updatedAt.toDate());
+      },
+      (error) => console.error('Error listening to document changes:', error)
+    );
+    return unsub;
+  }, [documentId, local]); // eslint-disable-line react-hooks/exhaustive-deps
+  // xray:end
 
-    const updatePresence = async () => {
-      try {
-        const presenceRef = doc(db, 'presence', `${documentId}_${user.uid}`);
-        await updateDoc(presenceRef, {
+  // Presence: heartbeat every 30s, show others active in the last 2 minutes.
+  useEffect(() => {
+    if (local || !user) return;
+    const presenceRef = doc(db, 'presence', `${documentId}_${user.uid}`);
+    const beat = () =>
+      setDoc(
+        presenceRef,
+        {
           userId: user.uid,
           docId: documentId,
           displayName: user.displayName || 'Anonymous',
           photoURL: user.photoURL || null,
           lastSeen: serverTimestamp(),
-          status: 'active'
-        }).catch(async () => {
-          // Create if doesn't exist
-          await addDoc(collection(db, 'presence'), {
-            userId: user.uid,
-            docId: documentId,
-            displayName: user.displayName || 'Anonymous',
-            photoURL: user.photoURL || null,
-            lastSeen: serverTimestamp(),
-            status: 'active'
-          });
-        });
-      } catch (error) {
-        console.error('Error updating presence:', error);
-      }
-    };
+          status: 'active',
+        },
+        { merge: true }
+      ).catch((e) => console.warn('presence', e));
+    beat();
+    const interval = setInterval(beat, 30000);
 
-    // Update presence immediately and then every 30 seconds
-    updatePresence();
-    presenceTimeoutRef.current = setInterval(updatePresence, 30000);
-
-    // Listen to other users' presence
-    const presenceQuery = query(
-      collection(db, 'presence'),
-      where('docId', '==', documentId)
+    const unsub = onSnapshot(
+      query(collection(db, 'presence'), where('docId', '==', documentId)),
+      (snap) => {
+        const now = Date.now();
+        setOnlineUsers(
+          snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((p) => p.userId !== user.uid && p.status !== 'offline' && p.lastSeen?.toDate && now - p.lastSeen.toDate() < 120000)
+        );
+      },
+      () => {}
     );
 
-    const unsubscribePresence = onSnapshot(presenceQuery, (snapshot) => {
-      const users = [];
-      const now = new Date();
-      
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        const lastSeen = data.lastSeen?.toDate();
-        
-        // Consider user online if they were active in the last 2 minutes
-        if (lastSeen && (now - lastSeen) < 120000 && data.userId !== user.uid) {
-          users.push({ id: doc.id, ...data });
-        }
-      });
-      
-      setOnlineUsers(users);
-    });
-
-    // Cleanup function
     return () => {
-      if (presenceTimeoutRef.current) {
-        clearInterval(presenceTimeoutRef.current);
-      }
-      unsubscribePresence();
-      
-      // Update status to offline
-      try {
-        const presenceRef = doc(db, 'presence', `${documentId}_${user.uid}`);
-        updateDoc(presenceRef, {
-          status: 'offline',
-          lastSeen: serverTimestamp()
-        });
-      } catch (error) {
-        console.error('Error updating offline status:', error);
-      }
+      clearInterval(interval);
+      unsub();
+      updateDoc(presenceRef, { status: 'offline', lastSeen: serverTimestamp() }).catch(() => {});
     };
-  }, [documentId, user]);
+  }, [documentId, user, local]);
 
-  // Comments subscription
+  // Comments
   useEffect(() => {
-    if (!documentId || !db) return;
-
-    const commentsQuery = query(
+    if (local) return;
+    const q = query(
       collection(db, 'comments'),
       where('docId', '==', documentId),
       where('resolved', '==', false),
       orderBy('createdAt', 'asc')
     );
+    return onSnapshot(
+      q,
+      (snap) => setComments(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      (e) => console.warn('comments', e)
+    );
+  }, [documentId, local]);
 
-    const unsubscribe = onSnapshot(commentsQuery, (snapshot) => {
-      const commentsList = [];
-      snapshot.forEach((doc) => {
-        commentsList.push({ id: doc.id, ...doc.data() });
-      });
-      setComments(commentsList);
-    });
-
-    return () => unsubscribe();
-  }, [documentId]);
-
-  // Auto-save functionality
-  const saveDocument = useCallback(async (newContent, newTitle) => {
-    if (!documentId || !user || !db) {
-      // Fallback for demo mode
-      setLastSaved(new Date());
-      return;
-    }
-
-    try {
-      setIsSaving(true);
-      const docRef = doc(db, 'documents', documentId);
-      const updateData = {
-        updatedAt: serverTimestamp(),
-        lastEditedBy: user.uid
-      };
-
-      if (newContent !== undefined) {
-        updateData.content = newContent;
+  const save = useCallback(
+    async (updates) => {
+      try {
+        setIsSaving(true);
+        await updateProject(user, documentId, updates);
+        setLastSaved(new Date());
+      } catch (error) {
+        console.error('Error saving document:', error);
+        toast.error('Couldn’t save — your changes are still here. Retrying on next edit.');
+      } finally {
+        setIsSaving(false);
       }
-      if (newTitle !== undefined) {
-        updateData.title = newTitle;
-      }
+    },
+    [documentId, user]
+  );
 
-      await updateDoc(docRef, updateData);
-      setLastSaved(new Date());
-    } catch (error) {
-      console.error('Error saving document:', error);
-      toast.error('Failed to save document');
-    } finally {
-      setIsSaving(false);
-    }
-  }, [documentId, user]);
-
-  // Handle content changes with debounced auto-save
-  const handleContentChange = useCallback((newContent) => {
-    setContent(newContent);
-    
-    if (onContentChange) {
-      onContentChange(newContent);
-    }
-
-    // Clear existing timeout
-    if (saveTimeoutRef.current) {
+  // xray:autosave
+  const handleContentChange = useCallback(
+    (next, _delta, source) => {
+      setContent(next);
+      if (source !== 'user') return;
+      lastLocalContent.current = next;
+      onContentChange?.(next);
       clearTimeout(saveTimeoutRef.current);
-    }
+      saveTimeoutRef.current = setTimeout(() => save({ content: next }), 1500);
+    },
+    [save, onContentChange]
+  );
+  // xray:end
 
-    // Set new timeout for auto-save
-    saveTimeoutRef.current = setTimeout(() => {
-      saveDocument(newContent);
-    }, 2000); // Auto-save after 2 seconds of inactivity
-  }, [saveDocument, onContentChange]);
+  const handleTitleChange = (next) => {
+    setDocumentTitle(next);
+    onTitleChange?.(next);
+    clearTimeout(titleTimeoutRef.current);
+    titleTimeoutRef.current = setTimeout(() => save({ title: next || 'Untitled' }), 800);
+  };
 
-  // Handle title changes
-  const handleTitleChange = useCallback((newTitle) => {
-    setDocumentTitle(newTitle);
-    
-    if (onTitleChange) {
-      onTitleChange(newTitle);
-    }
-
-    // Clear existing timeout
-    if (saveTimeoutRef.current) {
+  useEffect(
+    () => () => {
       clearTimeout(saveTimeoutRef.current);
-    }
+      clearTimeout(titleTimeoutRef.current);
+    },
+    []
+  );
 
-    // Auto-save title
-    saveTimeoutRef.current = setTimeout(() => {
-      saveDocument(undefined, newTitle);
-    }, 1000);
-  }, [saveDocument, onTitleChange]);
-
-  // Handle text selection for comments
-  const handleSelectionChange = useCallback(() => {
-    if (quillRef.current) {
-      const quill = quillRef.current.getEditor();
-      const range = quill.getSelection();
-      
-      if (range && range.length > 0) {
-        const selectedTextContent = quill.getText(range.index, range.length);
-        setSelectedText({
-          text: selectedTextContent,
-          range: range
-        });
-      } else {
-        setSelectedText(null);
-      }
+  const handleSelectionChange = useCallback((range) => {
+    const quill = quillRef.current?.getEditor();
+    if (quill && range && range.length > 0) {
+      setSelectedText({ text: quill.getText(range.index, range.length), range });
     }
   }, []);
 
-  // Add comment
   const addComment = async () => {
-    if (!newComment.trim() || !user || !documentId || !db) return;
-
+    if (!newComment.trim() || !user) return;
+    if (local) return toast('Comments need a synced (signed-in) project.');
     try {
       await addDoc(collection(db, 'comments'), {
         docId: documentId,
@@ -303,268 +221,163 @@ const CollaborativeEditor = ({
         userName: user.displayName || 'Anonymous',
         userPhoto: user.photoURL || null,
         content: newComment,
-        selection: selectedText,
+        selection: selectedText ? { text: selectedText.text, index: selectedText.range.index, length: selectedText.range.length } : null,
         createdAt: serverTimestamp(),
-        resolved: false
+        resolved: false,
       });
-
       setNewComment('');
       setSelectedText(null);
-      toast.success('Comment added');
     } catch (error) {
       console.error('Error adding comment:', error);
       toast.error('Failed to add comment');
     }
   };
 
-  // Resolve comment
   const resolveComment = async (commentId) => {
-    if (!db) return;
-
     try {
-      const commentRef = doc(db, 'comments', commentId);
-      await updateDoc(commentRef, {
-        resolved: true,
-        resolvedAt: serverTimestamp(),
-        resolvedBy: user.uid
-      });
-      toast.success('Comment resolved');
+      await updateDoc(doc(db, 'comments', commentId), { resolved: true, resolvedAt: serverTimestamp(), resolvedBy: user.uid });
     } catch (error) {
       console.error('Error resolving comment:', error);
       toast.error('Failed to resolve comment');
     }
   };
 
-  // Export document
   const exportDocument = () => {
-    const element = document.createElement('a');
-    const file = new Blob([content], { type: 'text/html' });
-    element.href = URL.createObjectURL(file);
-    element.download = `${documentTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.html`;
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-    toast.success('Document exported');
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${documentTitle}</title></head><body>${content}</body></html>`;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+    a.download = `${(documentTitle || 'manuscript').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.html`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   };
 
+  const status = isSaving ? (
+    <><Loader2 className="h-3 w-3 animate-spin" /> Saving</>
+  ) : lastSaved ? (
+    <><Check className="h-3 w-3" /> Saved {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</>
+  ) : (
+    <>Draft</>
+  );
+
   return (
-    <div className="h-full flex flex-col">
-      {/* Document Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div className="flex-1 flex items-center space-x-4">
-          {/* Editable Title */}
-          <input
-            type="text"
-            value={documentTitle}
-            onChange={(e) => handleTitleChange(e.target.value)}
-            className="text-xl font-semibold text-gray-900 bg-transparent border-none focus:outline-none focus:bg-gray-50 rounded px-2 py-1 flex-1 max-w-md"
-            placeholder="Untitled Document"
-          />
-
-          {/* Save Status */}
-          <div className="flex items-center text-sm text-gray-500">
-            {isSaving ? (
-              <>
-                <Save className="w-4 h-4 mr-1 animate-spin" />
-                Saving...
-              </>
-            ) : lastSaved ? (
-              <>
-                <Clock className="w-4 h-4 mr-1" />
-                Saved {lastSaved.toLocaleTimeString()}
-              </>
-            ) : (
-              <>
-                <FileText className="w-4 h-4 mr-1" />
-                Draft
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Collaboration Tools */}
-        <div className="flex items-center space-x-4">
-          {/* Online Users */}
-          <div className="flex items-center space-x-2">
-            <Users className="w-4 h-4 text-gray-400" />
-            <div className="flex -space-x-2">
-              {onlineUsers.slice(0, 5).map((user) => (
-                <div
-                  key={user.id}
-                  className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-accent-500 border-2 border-white flex items-center justify-center text-white text-xs font-medium"
-                  title={user.displayName}
-                >
-                  {user.photoURL ? (
-                    <img 
-                      src={user.photoURL} 
-                      alt={user.displayName}
-                      className="w-full h-full rounded-full object-cover"
-                    />
-                  ) : (
-                    user.displayName?.[0]?.toUpperCase() || 'U'
-                  )}
-                </div>
-              ))}
-              {onlineUsers.length > 5 && (
-                <div className="w-8 h-8 rounded-full bg-gray-400 border-2 border-white flex items-center justify-center text-white text-xs font-medium">
-                  +{onlineUsers.length - 5}
-                </div>
-              )}
-            </div>
-            <span className="text-sm text-gray-600">
-              {onlineUsers.length + 1} online
-            </span>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setShowComments(!showComments)}
-              className={`p-2 rounded-lg transition-colors ${
-                showComments 
-                  ? 'bg-primary-100 text-primary-700' 
-                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
-              }`}
-              title="Comments"
-            >
-              <MessageCircle className="w-4 h-4" />
-              {comments.length > 0 && (
-                <span className="ml-1 text-xs bg-red-500 text-white rounded-full px-1">
-                  {comments.length}
+    <div className="flex h-full min-h-0">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="border-b border-rule bg-paper px-4 pb-3 pt-4 sm:px-8">
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              id="doc-title"
+              type="text"
+              value={documentTitle}
+              onChange={(e) => handleTitleChange(e.target.value)}
+              className="min-w-0 flex-1 rounded bg-transparent font-serif text-2xl font-medium tracking-tight text-ink placeholder:text-ink-3 focus:outline-none sm:text-[1.7rem]"
+              placeholder="Untitled"
+              aria-label="Project title"
+            />
+            <div className="flex items-center gap-1">
+              {onlineUsers.length > 0 && (
+                <span className="mr-2 flex -space-x-1.5" title={`${onlineUsers.length} other(s) here now`}>
+                  {onlineUsers.slice(0, 4).map((u) => (
+                    <Avatar key={u.id} name={u.displayName} photo={u.photoURL} size="h-7 w-7 text-[0.6rem]" ring />
+                  ))}
                 </span>
               )}
-            </button>
-
-            <button
-              onClick={exportDocument}
-              className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-              title="Export"
-            >
-              <Download className="w-4 h-4" />
-            </button>
-
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(window.location.href);
-                toast.success('Link copied to clipboard');
-              }}
-              className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-              title="Share"
-            >
-              <Share2 className="w-4 h-4" />
-            </button>
+              <button
+                onClick={onToggleComments}
+                className={`icon-btn relative ${showComments ? 'bg-sunken text-ink' : ''}`}
+                title="Comments"
+                aria-pressed={showComments}
+              >
+                <MessageSquare className="h-4 w-4" />
+                {comments.length > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-signal px-1 text-[0.6rem] font-medium text-white">
+                    {comments.length}
+                  </span>
+                )}
+              </button>
+              <button onClick={exportDocument} className="icon-btn" title="Export as HTML">
+                <Download className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => navigator.clipboard.writeText(window.location.href).then(() => toast.success('Link copied'))}
+                className="icon-btn"
+                title="Copy link"
+              >
+                <Link2 className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <span className="inline-flex items-center gap-1.5 font-mono text-2xs uppercase tracking-[0.12em] text-ink-3">{status}</span>
+            {toolbarSlot}
           </div>
         </div>
-      </div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex">
-        {/* Editor */}
-        <div className="flex-1 flex flex-col">
+        <div className="manuscript min-h-0 flex-1 overflow-y-auto">
           <ReactQuill
             ref={quillRef}
             theme="snow"
             value={content}
             onChange={handleContentChange}
             onChangeSelection={handleSelectionChange}
-            modules={quillModules}
-            formats={quillFormats}
-            className="flex-1"
-            placeholder="Start writing your research document..."
+            modules={QUILL_MODULES}
+            formats={QUILL_FORMATS}
+            placeholder="Start with the question you’re trying to answer…"
           />
         </div>
-
-        {/* Comments Panel */}
-        {showComments && (
-          <div className="w-80 bg-gray-50 border-l border-gray-200 flex flex-col">
-            <div className="p-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                <MessageCircle className="w-5 h-5 mr-2" />
-                Comments ({comments.length})
-              </h3>
-            </div>
-
-            {/* Add Comment */}
-            <div className="p-4 border-b border-gray-200">
-              {selectedText && (
-                <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm">
-                  <strong>Selected text:</strong> "{selectedText.text.substring(0, 50)}..."
-                </div>
-              )}
-              <textarea
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                placeholder="Add a comment..."
-                className="w-full h-20 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none text-sm"
-              />
-              <button
-                onClick={addComment}
-                disabled={!newComment.trim()}
-                className="mt-2 w-full btn-primary py-2 text-sm disabled:opacity-50"
-              >
-                Add Comment
-              </button>
-            </div>
-
-            {/* Comments List */}
-            <div className="flex-1 overflow-y-auto">
-              {comments.length === 0 ? (
-                <div className="p-4 text-center text-gray-500">
-                  <MessageCircle className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                  <p className="text-sm">No comments yet</p>
-                  <p className="text-xs">Select text and add a comment</p>
-                </div>
-              ) : (
-                <div className="space-y-4 p-4">
-                  {comments.map((comment) => (
-                    <div key={comment.id} className="bg-white rounded-lg p-3 shadow-sm">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center">
-                          <div className="w-6 h-6 rounded-full bg-primary-500 flex items-center justify-center text-white text-xs font-medium mr-2">
-                            {comment.userPhoto ? (
-                              <img 
-                                src={comment.userPhoto} 
-                                alt={comment.userName}
-                                className="w-full h-full rounded-full object-cover"
-                              />
-                            ) : (
-                              comment.userName?.[0]?.toUpperCase() || 'U'
-                            )}
-                          </div>
-                          <span className="text-xs font-medium text-gray-900">
-                            {comment.userName}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => resolveComment(comment.id)}
-                          className="text-xs text-gray-400 hover:text-green-600"
-                          title="Resolve comment"
-                        >
-                          ✓
-                        </button>
-                      </div>
-                      
-                      {comment.selection && (
-                        <div className="text-xs text-gray-500 mb-1 italic">
-                          Re: "{comment.selection.text.substring(0, 30)}..."
-                        </div>
-                      )}
-                      
-                      <p className="text-sm text-gray-700">{comment.content}</p>
-                      
-                      <div className="text-xs text-gray-400 mt-1">
-                        {comment.createdAt?.toDate?.()?.toLocaleString()}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
+
+      {showComments && (
+        <aside className="flex w-full max-w-[20rem] shrink-0 flex-col border-l border-rule bg-surface max-lg:fixed max-lg:inset-y-0 max-lg:right-0 max-lg:z-40 max-lg:shadow-lift">
+          <div className="flex items-center justify-between border-b border-rule px-4 py-3">
+            <p className="text-sm font-medium">Comments <span className="font-mono text-2xs text-ink-3">{comments.length}</span></p>
+            <button onClick={onToggleComments} className="icon-btn" aria-label="Close comments"><X className="h-4 w-4" /></button>
+          </div>
+          <div className="border-b border-rule p-4">
+            {selectedText && (
+              <p className="mb-2 rounded-md bg-mark/40 px-2 py-1.5 font-serif text-sm italic text-ink-2">
+                “{selectedText.text.slice(0, 80)}{selectedText.text.length > 80 ? '…' : ''}”
+              </p>
+            )}
+            <textarea
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              placeholder={selectedText ? 'Comment on the selection…' : 'Select text to anchor a comment, or write a general note…'}
+              className="input-field h-20 resize-none"
+            />
+            <button onClick={addComment} disabled={!newComment.trim()} className="btn-primary btn-sm mt-2 w-full">
+              Comment
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            {comments.length === 0 ? (
+              <p className="py-8 text-center text-sm text-ink-3">{local ? 'Comments sync once you sign in with an account.' : 'No open comments.'}</p>
+            ) : (
+              <ul className="space-y-3">
+                {comments.map((c) => (
+                  <li key={c.id} className="rounded-lg border border-rule p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-2 text-xs font-medium">
+                        <Avatar name={c.userName} photo={c.userPhoto} size="h-5 w-5 text-[0.55rem]" />
+                        {c.userName}
+                      </span>
+                      <button onClick={() => resolveComment(c.id)} className="text-2xs text-ink-3 hover:text-accent" title="Resolve">
+                        Resolve
+                      </button>
+                    </div>
+                    {c.selection?.text && (
+                      <p className="mt-2 border-l-2 border-mark pl-2 font-serif text-xs italic text-ink-3">{c.selection.text.slice(0, 60)}…</p>
+                    )}
+                    <p className="mt-2 text-sm text-ink-2">{c.content}</p>
+                    <p className="mt-1.5 font-mono text-[0.6rem] text-ink-3">{c.createdAt?.toDate?.()?.toLocaleString()}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </aside>
+      )}
     </div>
   );
-};
+});
 
 export default CollaborativeEditor;
