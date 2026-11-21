@@ -6,6 +6,8 @@ import editorSrc from '../CollaborativeEditor.jsx?raw';
 import projectsSrc from '../../lib/projects.js?raw';
 import formatSrc from '../../lib/format.js?raw';
 import backendSrc from '../../../../backend/ai_service_api.py?raw';
+import modesSrc from '../../data/modes.js?raw';
+import dictationSrc from '../workspace/Dictation.jsx?raw';
 
 const FILES = {
   'frontend/src/main.jsx': mainSrc,
@@ -14,6 +16,8 @@ const FILES = {
   'frontend/src/lib/projects.js': projectsSrc,
   'frontend/src/lib/format.js': formatSrc,
   'backend/ai_service_api.py': backendSrc,
+  'frontend/src/data/modes.js': modesSrc,
+  'frontend/src/components/workspace/Dictation.jsx': dictationSrc,
 };
 
 export function excerpt(file, name) {

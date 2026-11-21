@@ -3,10 +3,12 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { LogOut, Menu, PenLine, Plus, X } from 'lucide-react';
 import Logo from '../ui/Logo.jsx';
 import Avatar from '../ui/Avatar.jsx';
+import ModeSwitch from '../ui/ModeSwitch.jsx';
 import { useAuth, displayNameOf } from '../../context/AuthContext.jsx';
 
 const NAV = [
   { to: '/explore', label: 'Explore' },
+  { to: '/library', label: 'Library' },
   { to: '/collaborate', label: 'Collaborate' },
   { to: '/guides', label: 'Guides' },
 ];
@@ -49,13 +51,14 @@ export default function SiteHeader() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
+          <ModeSwitch className="hidden lg:inline-grid" />
           {user ? (
             <>
               <Link to="/workspace" className="btn-ghost hidden sm:inline-flex">
                 <PenLine className="h-4 w-4" /> Workspace
               </Link>
               <Link to="/new" className="btn-primary hidden sm:inline-flex">
-                <Plus className="h-4 w-4" /> New project
+                <Plus className="h-4 w-4" /> New
               </Link>
               <div className="relative" ref={menuRef}>
                 <button onClick={() => setMenu(!menu)} className="ml-1 rounded-full" aria-label="Account menu" aria-expanded={menu}>
@@ -70,6 +73,7 @@ export default function SiteHeader() {
                       </p>
                     </div>
                     <button onClick={() => navigate('/workspace')} className="block w-full px-4 py-2 text-left text-sm hover:bg-sunken">Your workspace</button>
+                    <button onClick={() => navigate('/workspace/inbox')} className="block w-full px-4 py-2 text-left text-sm hover:bg-sunken">Updates</button>
                     <button onClick={() => navigate('/new')} className="block w-full px-4 py-2 text-left text-sm hover:bg-sunken">Start a project</button>
                     <button onClick={signOut} className="flex w-full items-center gap-2 border-t border-rule px-4 py-2 text-left text-sm text-ink-2 hover:bg-sunken">
                       <LogOut className="h-3.5 w-3.5" /> Sign out
@@ -94,6 +98,7 @@ export default function SiteHeader() {
 
       {open && (
         <div className="border-t border-rule bg-paper px-4 pb-5 pt-2 md:hidden animate-fade-in">
+          <ModeSwitch className="mb-3 mt-2 w-full" />
           <nav className="flex flex-col" aria-label="Mobile">
             {NAV.map((n) => (
               <NavLink key={n.to} to={n.to} className="border-b border-rule py-3 font-serif text-lg">

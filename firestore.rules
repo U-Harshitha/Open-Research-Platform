@@ -67,6 +67,20 @@ service cloud.firestore {
         request.auth.uid == resource.data.userId;
     }
     
+    // Per-project chat. Only the project's collaborators can read or post.
+    match /messages/{messageId} {
+      function project(id) {
+        return get(/databases/$(database)/documents/documents/$(id)).data;
+      }
+      allow read: if isAuthenticated() && isCollaborator(project(resource.data.projectId));
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.text is string &&
+        request.resource.data.text.size() <= 2000 &&
+        isCollaborator(project(request.resource.data.projectId));
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
     // Files uploaded to a document (metadata; bytes live in Storage)
     match /documentFiles/{fileId} {
       function parentDoc(docId) {

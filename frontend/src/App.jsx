@@ -3,6 +3,7 @@ import { Route, Routes } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { XrayProvider } from './context/XrayContext.jsx';
+import { ModeProvider } from './context/ModeContext.jsx';
 import SiteLayout from './components/layout/SiteLayout.jsx';
 import Landing from './pages/Landing.jsx';
 import Explore from './pages/Explore.jsx';
@@ -12,6 +13,9 @@ import Guides, { Guide } from './pages/Guides.jsx';
 import Profile from './pages/Profile.jsx';
 import NewProject from './pages/NewProject.jsx';
 import NotFound from './pages/NotFound.jsx';
+
+// Library calls the scholarly / book APIs; it loads on demand.
+const Library = lazy(() => import('./pages/Library.jsx'));
 
 // xray:lazy
 // The editor pulls in Quill; load it only when someone opens the workspace.
@@ -30,6 +34,7 @@ const Loading = () => (
 
 export default function App() {
   return (
+    <ModeProvider>
     <AuthProvider>
       <XrayProvider>
       <Toaster
@@ -55,13 +60,16 @@ export default function App() {
             <Route path="guides/:slug" element={<Guide />} />
             <Route path="u/:handle" element={<Profile />} />
             <Route path="new" element={<NewProject />} />
+            <Route path="library" element={<Library />} />
             <Route path="*" element={<NotFound />} />
           </Route>
           <Route path="workspace" element={<Workspace />} />
+          <Route path="workspace/inbox" element={<Workspace inbox />} />
           <Route path="workspace/:docId" element={<Workspace />} />
         </Routes>
       </Suspense>
       </XrayProvider>
     </AuthProvider>
+    </ModeProvider>
   );
 }

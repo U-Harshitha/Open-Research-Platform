@@ -2,8 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Clock, Megaphone } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { DISCIPLINES, disciplineById } from '../data/catalog.js';
-import { CALLS, RESEARCHERS, projectBySlug, researcherByHandle } from '../data/samples.js';
+import { FIELD_BY_ID as disciplineById, PEOPLE_BY_HANDLE as researcherByHandle, PROJECT_BY_SLUG as projectBySlug } from '../data/modes.js';
+import { useMode } from '../context/ModeContext.jsx';
+import Reveal from '../components/motion/Reveal.jsx';
 import { DisciplineDot } from '../components/ui/DisciplineTag.jsx';
 import Avatar from '../components/ui/Avatar.jsx';
 import SampleNotice from '../components/ui/SampleNotice.jsx';
@@ -12,13 +13,17 @@ import { relativeDate } from '../lib/format.js';
 import { useAuth } from '../context/AuthContext.jsx';
 
 export default function Collaborate() {
+  const { m } = useMode();
+  const DISCIPLINES = m.fields;
+  const CALLS = m.calls;
+  const RESEARCHERS = m.people;
   const [field, setField] = useState(null);
   const { user, openAuth } = useAuth();
   const navigate = useNavigate();
 
   const calls = useMemo(
     () => CALLS.filter((c) => !field || c.toward === field || c.from === field),
-    [field]
+    [field, CALLS]
   );
   const openPeople = RESEARCHERS.filter((r) => r.open);
 
@@ -32,8 +37,8 @@ export default function Collaborate() {
     <>
       <PageHeader
         eyebrow="Collaborate"
-        title="Open calls for expertise"
-        intro="Projects say what they’re missing. If you have it — a method, a dataset, a language, a lab — say hello. Most calls take a few hours a week."
+        title={m.copy.collaborateTitle}
+        intro={m.copy.collaborateIntro}
         aside={
           <button
             onClick={() => (user ? navigate('/new') : openAuth({ reason: 'Sign in to post a call for collaborators.' }))}
@@ -45,7 +50,7 @@ export default function Collaborate() {
       >
         <div className="mt-8 flex flex-wrap gap-1.5">
           <button onClick={() => setField(null)} className={`rounded-full border px-3 py-1 text-xs ${!field ? 'border-ink bg-ink text-paper' : 'border-rule bg-surface text-ink-2 hover:border-ink-3'}`}>
-            All fields
+            All {m.fieldsLabel.toLowerCase()}
           </button>
           {DISCIPLINES.map((d) => (
             <button
@@ -63,11 +68,11 @@ export default function Collaborate() {
         <div>
           <SampleNotice className="mb-6" />
           <div className="grid gap-4">
-            {calls.map((c) => {
+            {calls.map((c, i) => {
               const p = projectBySlug[c.project];
               const lead = researcherByHandle[p.lead];
               return (
-                <article key={c.id} className="rounded-xl border border-rule bg-surface p-6">
+                <Reveal as="article" delay={i} key={c.id} className="rounded-xl border border-rule bg-surface p-6 transition-shadow hover:shadow-lift">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
                     <span className="inline-flex items-center gap-1.5"><DisciplineDot id={c.from} /> {disciplineById[c.from].short}</span>
                     <ArrowRight className="h-3 w-3 text-ink-3" />
@@ -95,12 +100,12 @@ export default function Collaborate() {
                     </span>
                     <button onClick={() => offer(c)} className="btn-secondary btn-sm">Offer to help</button>
                   </div>
-                </article>
+                </Reveal>
               );
             })}
             {calls.length === 0 && (
               <div className="rounded-xl border border-dashed border-rule py-14 text-center text-sm text-ink-2">
-                No open calls in this field yet.
+                No open calls here yet.
               </div>
             )}
           </div>

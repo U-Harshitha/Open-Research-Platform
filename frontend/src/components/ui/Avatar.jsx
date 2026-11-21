@@ -1,6 +1,6 @@
 import React from 'react';
 import { initials } from '../../lib/format.js';
-import { disciplineById } from '../../data/catalog.js';
+import { FIELD_BY_ID as disciplineById } from '../../data/modes.js';
 
 export default function Avatar({ name, photo, field, size = 'h-8 w-8 text-xs', ring = false }) {
   const bg = disciplineById[field]?.color || 'rgb(var(--ink-2))';

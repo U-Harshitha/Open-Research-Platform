@@ -24,9 +24,13 @@ logger = logging.getLogger(__name__)
 # Initialize Flask app
 app = Flask(__name__)
 
+from sources import sources_bp, openlibrary_books
+
 # Configure CORS
 allowed_origins = [o.strip().rstrip('/') for o in os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000').split(',') if o.strip()]
 CORS(app, origins=allowed_origins, supports_credentials=True)
+
+app.register_blueprint(sources_bp)
 
 # Initialize Firebase Admin SDK
 def initialize_firebase():
@@ -244,7 +248,10 @@ def grounded_search():
     
     if not query:
         return jsonify({'error': 'Query is required'}), 400
-    
+
+    if data.get('mode') == 'stories':
+        return find_comparable_books(query, context)
+
     try:
         papers = openalex_search(query)
     except Exception as e:
@@ -289,6 +296,46 @@ Papers:
         log_search_query(query, context, result)
     return jsonify(result)
 
+def find_comparable_books(query: str, context: str):
+    """Stories mode: comparable titles from Open Library, discussed by the model."""
+    try:
+        books = openlibrary_books(query, limit=8)
+    except Exception as e:
+        logger.error(f"Open Library error: {e}")
+        books = []
+    answer = ''
+    if model and books:
+        listing = "\n".join(f"[{i}] {b['title']} by {', '.join(b['authors']) or 'unknown'} ({b['year']}). Subjects: {', '.join(b['subjects'][:4])}"
+                            for i, b in enumerate(books, start=1))
+        prompt = f"""A fiction writer is looking for comparable titles and inspiration for: {query}
+
+Their draft so far (context only): {context[:800]}
+
+Using ONLY the books below, say in 2-3 short paragraphs which are the closest comps and what the
+writer could learn from each (structure, voice, pacing, premise). Cite them as [n].
+
+Books:
+{listing}"""
+        try:
+            answer = model.generate_content(prompt).text
+        except Exception as e:
+            logger.error(f"Comps summary error: {e}")
+    if not books and not answer:
+        return jsonify({'error': 'Book search temporarily unavailable', 'success': False}), 503
+    return jsonify({
+        'success': True,
+        'query': query,
+        'answer': answer,
+        'papers': [
+            {'n': i, 'title': b['title'], 'authors': b['authors'], 'year': b['year'], 'venue': None,
+             'cited_by': 0, 'url': b['url'], 'cover': b['cover'], 'kind': 'book'}
+            for i, b in enumerate(books, start=1)
+        ],
+        'grounded': bool(books),
+        'timestamp': datetime.utcnow().isoformat(),
+    })
+
+
 @app.route('/api/complete', methods=['POST'])
 @handle_errors
 @exponential_backoff()
@@ -326,6 +373,19 @@ def writing_assistance():
     Provide only the suggested completion or improvement, not commentary.
     """
     
+    if style == 'fiction':
+        completion_prompt = f"""
+    You are a fiction co-writer. Continue or revise the story below as the writer asks.
+    Match their voice, tense and point of view. Show, don't tell. Keep names and facts consistent.
+
+    Story so far (may be long; the end matters most):
+    {content[-6000:]}
+
+    Writer's request: {prompt}
+
+    Return only the new prose, no commentary or headings.
+    """
+
     try:
         response = model.generate_content(completion_prompt)
         
@@ -405,6 +465,17 @@ def document_analysis():
     Provide your analysis in a structured format with actionable recommendations.
     """
     
+    if analysis_type == 'beta':
+        analysis_prompt = f"""
+    You are a thoughtful beta reader. Read this piece of fiction and give honest, kind, specific feedback.
+
+    {content[:12000]}
+
+    Cover: what hooked you and where attention drifted; pacing; whether characters' wants are clear;
+    dialogue that rings false; confusing moments; and the single change that would help most.
+    Quote short phrases to point at places. Use short headed sections.
+    """
+
     try:
         response = model.generate_content(analysis_prompt)
         

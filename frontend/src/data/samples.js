@@ -22,6 +22,7 @@ export const researcherByHandle = Object.fromEntries(RESEARCHERS.map((r) => [r.h
 
 export const PROJECTS = [
   {
+    mode: 'research',
     slug: 'urban-heat-childhood-asthma',
     title: 'Urban heat islands and childhood asthma admissions',
     question: 'Do the hottest city blocks send more children to hospital with asthma — and is it the heat, the air, or the housing?',
@@ -63,6 +64,7 @@ export const PROJECTS = [
     builtOn: 2,
   },
   {
+    mode: 'research',
     slug: 'code-mixed-sarcasm',
     title: 'Sarcasm in code-mixed Telugu–English social media',
     question: 'When speakers switch languages mid-sentence, does the switch itself signal sarcasm?',
@@ -103,6 +105,7 @@ export const PROJECTS = [
     builtOn: 5,
   },
   {
+    mode: 'research',
     slug: 'ego-depletion-many-labs',
     title: 'A preregistered multi-site replication of ego depletion',
     question: 'Does exerting self-control on one task really make the next one harder?',
@@ -143,6 +146,7 @@ export const PROJECTS = [
     builtOn: 3,
   },
   {
+    mode: 'research',
     slug: 'low-cost-soil-moisture',
     title: 'Low-cost soil moisture sensing for smallholder farms',
     question: 'Can a sensor that costs less than a sack of fertiliser tell a farmer when to irrigate?',
@@ -179,6 +183,7 @@ export const PROJECTS = [
     builtOn: 7,
   },
   {
+    mode: 'research',
     slug: 'cyclone-relocation-oral-histories',
     title: 'Oral histories of fishing communities after cyclone relocation',
     question: 'What do families lose — and keep — when they are moved inland after a cyclone?',
@@ -207,6 +212,7 @@ export const PROJECTS = [
     builtOn: 0,
   },
   {
+    mode: 'research',
     slug: 'gnn-binding-affinity',
     title: 'How much do graph neural networks really learn about binding?',
     question: 'Are protein–ligand affinity models learning chemistry, or memorising the benchmark?',
@@ -236,6 +242,7 @@ export const PROJECTS = [
     builtOn: 11,
   },
   {
+    mode: 'research',
     slug: 'open-peer-review-survey',
     title: 'Open peer review across 40 journals: who signs, and why?',
     question: 'When reviewers can sign their reports, which ones do — and does it change what they write?',
@@ -270,6 +277,7 @@ export const PROJECTS = [
     builtOn: 4,
   },
   {
+    mode: 'research',
     slug: 'topology-early-warning',
     title: 'Topological early-warning signals for ecosystem collapse',
     question: 'Can the changing shape of sensor data warn us before a lake flips to an algae-dominated state?',

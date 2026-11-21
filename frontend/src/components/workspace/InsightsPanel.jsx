@@ -1,7 +1,11 @@
 import React from 'react';
 import { Check, Circle } from 'lucide-react';
 import { manuscriptStats, stripHtml } from '../../lib/format.js';
-import { templateById } from '../../data/catalog.js';
+import { TEMPLATES } from '../../data/catalog.js';
+import { STORY_TEMPLATES } from '../../data/stories.js';
+import { modeOfProject } from '../../data/modes.js';
+
+const templateById = Object.fromEntries([...TEMPLATES, ...STORY_TEMPLATES].map((t) => [t.id, t]));
 
 // Everything here is computed from the manuscript — no invented metrics.
 export default function InsightsPanel({ project, content }) {
@@ -16,10 +20,10 @@ export default function InsightsPanel({ project, content }) {
       const has = headings.some((h) => h.includes(sec.toLowerCase().split(' ')[0]));
       return [`${sec} section`, has];
     }),
-    ['At least one citation like [1]', s.citations > 0],
-    ['A one-sentence question on Explore', !!project.question],
+    modeOfProject(project) === 'stories' ? ['Past 1,000 words', s.words >= 1000] : ['At least one citation like [1]', s.citations > 0],
+    [modeOfProject(project) === 'stories' ? 'A one-line premise' : 'A one-sentence question on Explore', !!project.question],
     ['Fields chosen', (project.disciplines || []).length > 0],
-    ['Data or code linked', (project.assets || []).length > 0],
+    [modeOfProject(project) === 'stories' ? 'Notes or world linked' : 'Data or code linked', (project.assets || []).length > 0],
   ];
   const done = checks.filter(([, ok]) => ok).length;
   const placeholders = (text.match(/working title|in 150–250 words|what is known/g) || []).length;

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { PROJECTS, researcherByHandle } from '../data/samples.js';
+import { PEOPLE_BY_HANDLE as researcherByHandle, PROJECT_BY_SLUG } from '../data/modes.js';
+const PROJECTS = Object.values(PROJECT_BY_SLUG);
 import DisciplineTag from '../components/ui/DisciplineTag.jsx';
 import Avatar from '../components/ui/Avatar.jsx';
 import ProjectCard from '../components/ui/ProjectCard.jsx';
@@ -44,7 +45,7 @@ export default function Profile() {
         </aside>
         <div className="min-w-0 space-y-12">
           <section>
-            <p className="eyebrow mb-4">Contributions by CRediT role</p>
+            <p className="eyebrow mb-4">Contributions by role</p>
             <div className="flex flex-wrap gap-2">
               {roles.map(([r, n]) => (
                 <span key={r} className="inline-flex items-center gap-2 rounded-full border border-rule bg-surface px-3 py-1 text-sm">

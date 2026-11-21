@@ -1,4 +1,5 @@
 import React from 'react';
+import { useMode } from '../../context/ModeContext.jsx';
 
 export function LogoMark({ className = 'h-7 w-7' }) {
   return (
@@ -13,16 +14,17 @@ export function LogoMark({ className = 'h-7 w-7' }) {
 }
 
 export default function Logo({ compact = false }) {
+  const { m } = useMode();
   return (
     <span className="inline-flex items-center gap-2.5">
       <LogoMark />
       <span className="leading-none">
         <span className="block font-serif text-[1.15rem] font-medium tracking-tight text-ink">
-          Research Nexus
+          {m.brand}
         </span>
         {!compact && (
           <span className="mt-0.5 block font-mono text-[0.6rem] uppercase tracking-[0.18em] text-ink-3">
-            Open · Versioned · Shared
+            {m.motto}
           </span>
         )}
       </span>

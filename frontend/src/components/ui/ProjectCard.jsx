@@ -4,7 +4,7 @@ import { GitFork, MessageSquare, Users } from 'lucide-react';
 import StageMeter from './StageMeter.jsx';
 import { Bridge } from './DisciplineTag.jsx';
 import { AvatarStack } from './Avatar.jsx';
-import { researcherByHandle } from '../../data/samples.js';
+import { PEOPLE_BY_HANDLE as researcherByHandle } from '../../data/modes.js';
 import { compact, relativeDate } from '../../lib/format.js';
 
 export default function ProjectCard({ project, variant = 'card' }) {
