@@ -60,6 +60,7 @@ A comprehensive, real-time research collaboration platform built with React, Pyt
    GOOGLE_APPLICATION_CREDENTIALS=./firebase-service-account.json
    FIREBASE_PROJECT_ID=your-project-id
    GEMINI_API_KEY=your-gemini-api-key
+   ALLOWED_ORIGINS=http://localhost:3000
    FLASK_ENV=development
    ```
 
@@ -103,33 +104,11 @@ A comprehensive, real-time research collaboration platform built with React, Pyt
 - **Analytics**: View document insights and research metrics
 
 
-### Firebase Hosting
-```bash
-npm run build
-firebase deploy --only hosting
-```
+## 🌍 Going live
 
-The build lands in `frontend/dist/research/`, and `firebase.json` serves it at
-`https://research-e9734.web.app/research/` (the site root redirects there).
-
-### Serving it from the portfolio at `/research`
-This works exactly like `/hangman`: the portfolio's Vercel rewrites proxy the path to
-where the app is hosted, and the app is built to live under that same path.
-
-Add these to `rewrites` in the portfolio's `vercel.json`:
-
-```json
-{ "source": "/research", "destination": "https://research-e9734.web.app/research/" },
-{ "source": "/research/:path*", "destination": "https://research-e9734.web.app/research/:path*" }
-```
-
-Then, once:
-- **Firebase Console → Authentication → Settings → Authorized domains**: add the portfolio
-  domain (`harshitha-upadhyayula.vercel.app`) so Google sign-in works through the proxy.
-- **Backend**: add the portfolio domain to `ALLOWED_ORIGINS`, and set `VITE_API_URL`
-  to the deployed Flask service before building.
-
-To mount it somewhere else, change `VITE_BASE_PATH` and the rewrite paths together.
+Same setup as the Hangman game: a **Render Blueprint** (`render.yaml`) deploys the static site
+and the Flask API, and the portfolio's Vercel rewrites serve it at
+`harshitha-upadhyayula.vercel.app/research`. Step by step: **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)**.
 
 ## 🗺️ Site map
 

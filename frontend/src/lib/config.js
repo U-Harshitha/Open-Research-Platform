@@ -1,8 +1,17 @@
 const env = import.meta.env;
 
-// Flask AI service (backend/ai_service_api.py)
+// Flask AI service (backend/ai_service_api.py).
+// VITE_API_URL may be a full URL, a bare host, or — as Render's Blueprint
+// `fromService: property: host` provides — just the service name.
+function apiBase(raw) {
+  if (!raw) return env.PROD ? '' : 'http://localhost:5000';
+  let v = raw.trim().replace(/\/$/, '');
+  if (!/^https?:\/\//.test(v)) v = `https://${v.includes('.') ? v : `${v}.onrender.com`}`;
+  return v;
+}
+
 export const API_CONFIG = {
-  BASE_URL: (env.VITE_API_URL || (env.PROD ? '' : 'http://localhost:5000')).replace(/\/$/, ''),
+  BASE_URL: apiBase(env.VITE_API_URL),
   ENDPOINTS: {
     SEARCH: '/api/search',
     COMPLETE: '/api/complete',

@@ -67,6 +67,19 @@ service cloud.firestore {
         request.auth.uid == resource.data.userId;
     }
     
+    // Files uploaded to a document (metadata; bytes live in Storage)
+    match /documentFiles/{fileId} {
+      function parentDoc(docId) {
+        return get(/databases/$(database)/documents/documents/$(docId)).data;
+      }
+      allow read: if isAuthenticated() &&
+        (isCollaborator(parentDoc(resource.data.documentId)) || isPublicDocument(parentDoc(resource.data.documentId)));
+      allow create: if isAuthenticated() &&
+        request.resource.data.uploadedBy == request.auth.uid &&
+        isCollaborator(parentDoc(request.resource.data.documentId));
+      allow delete: if isAuthenticated() && resource.data.uploadedBy == request.auth.uid;
+    }
+
     // Analytics - users can only create and read their own analytics
     match /analytics/{analyticsId} {
       allow create: if isAuthenticated() && 

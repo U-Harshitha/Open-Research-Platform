@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ArrowRight, FileSearch, Loader2, PenLine, Search, ShieldCheck } from 'lucide-react';
 import { API_CONFIG } from '../../lib/config.js';
 import { stripHtml } from '../../lib/format.js';
@@ -34,11 +34,21 @@ export default function AssistantPanel({ content, onInsert }) {
   const [results, setResults] = useState({});
   const [error, setError] = useState(null);
 
+  const [slow, setSlow] = useState(false);
+  const slowTimer = useRef(null);
+
+  // The free-tier API sleeps when idle; nudge it awake as soon as the panel opens.
+  useEffect(() => {
+    if (API_CONFIG.BASE_URL) fetch(`${API_CONFIG.BASE_URL}/api/health`).catch(() => {});
+  }, []);
+
   const hasText = stripHtml(content).length > 40;
 
   const run = async () => {
     setError(null);
     setLoading(true);
+    setSlow(false);
+    slowTimer.current = setTimeout(() => setSlow(true), 6000);
     try {
       let data;
       if (mode === 'search') data = await call(API_CONFIG.ENDPOINTS.SEARCH, { query: input, context: stripHtml(content).slice(0, 4000) });
@@ -49,7 +59,9 @@ export default function AssistantPanel({ content, onInsert }) {
     } catch (e) {
       setError(e.message);
     } finally {
+      clearTimeout(slowTimer.current);
       setLoading(false);
+      setSlow(false);
     }
   };
 
@@ -102,6 +114,9 @@ export default function AssistantPanel({ content, onInsert }) {
         )}
         {!needsInput && !hasText && <p className="text-xs text-ink-3">Write a little more first.</p>}
 
+        {slow && loading && (
+          <p className="rounded-lg bg-sunken px-3 py-2 text-xs text-ink-2">Waking the AI service up — the first request after a quiet spell can take up to a minute.</p>
+        )}
         {error && <ErrorNote message={error} />}
 
         {r && mode === 'search' && (
@@ -111,12 +126,16 @@ export default function AssistantPanel({ content, onInsert }) {
               <div>
                 <p className="eyebrow mb-2">Sources</p>
                 <ol className="space-y-1.5">
-                  {r.sources.slice(0, 6).map((s, i) => (
-                    <li key={i} className="flex gap-2 text-xs">
-                      <span className="font-mono text-ink-3">[{i + 1}]</span>
-                      <a href={s} target="_blank" rel="noopener noreferrer" className="truncate text-accent hover:underline">{s}</a>
-                    </li>
-                  ))}
+                  {r.sources.slice(0, 8).map((src, i) => {
+                    const uri = typeof src === 'string' ? src : src.uri;
+                    const label = typeof src === 'string' ? src : src.title || src.uri;
+                    return (
+                      <li key={i} className="flex gap-2 text-xs">
+                        <span className="font-mono text-ink-3">[{i + 1}]</span>
+                        <a href={uri} target="_blank" rel="noopener noreferrer" className="truncate text-accent hover:underline">{label}</a>
+                      </li>
+                    );
+                  })}
                 </ol>
               </div>
             )}
@@ -130,7 +149,7 @@ export default function AssistantPanel({ content, onInsert }) {
               onClick={() => onInsert(`<p>${String(r.completion).replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>')}</p>`)}
               className="btn-secondary btn-sm w-full"
             >
-              Insert at cursor
+              Insert below cursor
             </button>
             <p className="text-2xs text-ink-3">AI drafts can be wrong. Check every claim and add your own citations.</p>
           </div>
@@ -148,15 +167,15 @@ export default function AssistantPanel({ content, onInsert }) {
 
         {r && mode === 'plagiarism' && (
           <div className="space-y-3">
-            <div className="rounded-lg border border-rule p-3">
-              <div className="flex items-baseline justify-between">
-                <span className="text-xs text-ink-2">Similarity estimate</span>
-                <span className="display text-xl">{r.similarity_score}%</span>
-              </div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-sunken">
-                <div className={`h-full ${r.risk_level === 'low' ? 'bg-[#2F7D5B]' : r.risk_level === 'medium' ? 'bg-[#B7791F]' : 'bg-signal'}`} style={{ width: `${Math.min(100, r.similarity_score)}%` }} />
-              </div>
-              <p className="mt-2 font-mono text-2xs uppercase tracking-[0.12em] text-ink-3">Risk: {r.risk_level}</p>
+            <div className="flex items-center justify-between rounded-lg border border-rule p-3">
+              <span className="text-xs text-ink-2">Citation risk</span>
+              <span
+                className={`rounded-full px-2.5 py-0.5 font-mono text-2xs uppercase tracking-[0.12em] ${
+                  r.risk_level === 'low' ? 'bg-[#2F7D5B]/10 text-[#2F7D5B]' : r.risk_level === 'medium' ? 'bg-mark/40 text-ink' : r.risk_level === 'high' ? 'bg-signal-soft text-signal' : 'bg-sunken text-ink-2'
+                }`}
+              >
+                {r.risk_level}
+              </span>
             </div>
             <div className="max-h-64 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-ink-2">{r.analysis}</div>
             {r.disclaimer && <p className="text-2xs text-ink-3">{r.disclaimer}</p>}

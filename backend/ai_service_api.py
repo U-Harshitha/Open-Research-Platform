@@ -7,7 +7,8 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from functools import wraps
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types as genai_types
 import requests
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # Configure CORS
-allowed_origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
+allowed_origins = [o.strip().rstrip('/') for o in os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000').split(',') if o.strip()]
 CORS(app, origins=allowed_origins, supports_credentials=True)
 
 # Initialize Firebase Admin SDK
@@ -36,6 +37,10 @@ def initialize_firebase():
             # For development, use service account key file
             if os.path.exists('firebase-service-account.json'):
                 cred = credentials.Certificate('firebase-service-account.json')
+            elif not os.getenv('FIREBASE_PRIVATE_KEY'):
+                # Optional: only used to log searches. The AI endpoints work without it.
+                logger.info("Firebase admin credentials not set; search logging disabled")
+                return None
             else:
                 # For production, use environment variables
                 cred_dict = {
@@ -57,15 +62,49 @@ def initialize_firebase():
         logger.error(f"Failed to initialize Firebase: {e}")
         return None
 
-# Initialize Gemini AI
+# Initialize Gemini AI (google-genai SDK)
+# GEMINI_MODEL defaults to Google's rolling alias for the current Flash model,
+# so the service keeps working as individual model versions are retired.
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-flash-latest')
+
+
+class GeminiResult:
+    def __init__(self, text: str, sources: Optional[List[Dict[str, str]]] = None):
+        self.text = text or ''
+        self.sources = sources or []
+
+
+class GeminiModel:
+    """Thin wrapper so routes can call model.generate_content(prompt)."""
+
+    def __init__(self, client, model_name: str):
+        self.client = client
+        self.model_name = model_name
+
+    def generate_content(self, prompt: str, search: bool = False) -> GeminiResult:
+        config = None
+        if search:
+            config = genai_types.GenerateContentConfig(
+                tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())]
+            )
+        response = self.client.models.generate_content(model=self.model_name, contents=prompt, config=config)
+        sources = []
+        try:
+            meta = response.candidates[0].grounding_metadata
+            for chunk in (meta.grounding_chunks or []) if meta else []:
+                if chunk.web and chunk.web.uri:
+                    sources.append({'title': chunk.web.title or chunk.web.domain or chunk.web.uri, 'uri': chunk.web.uri})
+        except (AttributeError, IndexError, TypeError):
+            pass
+        return GeminiResult(response.text, sources)
+
+
 def initialize_gemini():
     try:
         api_key = os.getenv('GEMINI_API_KEY')
         if not api_key:
             raise ValueError("GEMINI_API_KEY environment variable not set")
-        
-        genai.configure(api_key=api_key)
-        return genai.GenerativeModel('gemini-pro')
+        return GeminiModel(genai.Client(api_key=api_key), GEMINI_MODEL)
     except Exception as e:
         logger.error(f"Failed to initialize Gemini: {e}")
         return None
@@ -118,7 +157,8 @@ def health_check():
         'services': {
             'firebase': db is not None,
             'gemini': model is not None
-        }
+        },
+        'model': GEMINI_MODEL
     })
 
 @app.route('/api/search', methods=['POST'])
@@ -143,7 +183,9 @@ def grounded_search():
     As a research assistant, perform a comprehensive search and analysis for the following query:
     
     Query: {query}
-    Document Context: {context[:1000]}...
+    Document Context: {context[:1000]}
+
+    Use Google Search to ground the answer in current, citable sources.
     
     Please provide:
     1. A comprehensive answer based on the most current and reliable information
@@ -157,7 +199,7 @@ def grounded_search():
     """
     
     try:
-        response = model.generate_content(search_prompt)
+        response = model.generate_content(search_prompt, search=True)
         
         result = {
             'success': True,
@@ -165,7 +207,7 @@ def grounded_search():
             'answer': response.text,
             'timestamp': datetime.utcnow().isoformat(),
             'grounded': True,
-            'sources': extract_sources_from_response(response.text)
+            'sources': response.sources or [{'title': s, 'uri': s} for s in extract_sources_from_response(response.text) if s.startswith('http')]
         }
         
         # Log search for analytics
@@ -348,8 +390,11 @@ def plagiarism_check():
     Content to analyze:
     {content}
     
-    Please provide:
-    1. Overall originality assessment (percentage)
+    Start your response with exactly one line of the form "RISK: low", "RISK: medium" or "RISK: high",
+    describing how likely the text contains passages that need a citation or quotation marks.
+
+    Then provide:
+    1. Overall originality assessment
     2. Identification of potentially problematic phrases or sentences
     3. Common knowledge vs. specific claims analysis
     4. Writing style consistency evaluation
@@ -362,24 +407,20 @@ def plagiarism_check():
     try:
         response = model.generate_content(plagiarism_prompt)
         
-        # Simulate similarity scoring based on content characteristics
-        word_count = len(content.split())
-        similarity_score = min(95, max(5, 
-            # Simulated scoring based on content characteristics
-            20 + (len(set(content.lower().split())) / word_count) * 30 +
-            (content.count('"') / max(1, word_count / 50)) * 15 +
-            (len([s for s in content.split('.') if len(s) > 100]) / max(1, len(content.split('.')))) * 20
-        ))
-        
+        import re
+        match = re.search(r'RISK:\s*(low|medium|high)', response.text, re.IGNORECASE)
+        risk_level = match.group(1).lower() if match else 'unknown'
+        analysis_text = re.sub(r'^\s*RISK:.*\n?', '', response.text, count=1, flags=re.IGNORECASE)
+
         result = {
             'success': True,
-            'similarity_score': round(similarity_score, 1),
-            'risk_level': 'low' if similarity_score < 15 else ('medium' if similarity_score < 30 else 'high'),
-            'analysis': response.text,
+            'similarity_score': None,
+            'risk_level': risk_level,
+            'analysis': analysis_text,
             'flagged_segments': extract_flagged_segments(content, response.text),
             'recommendations': extract_recommendations(response.text),
             'timestamp': datetime.utcnow().isoformat(),
-            'disclaimer': 'This is a preliminary AI-based assessment. Use dedicated plagiarism detection tools for final verification.'
+            'disclaimer': 'AI review of citation risk, not a database comparison. Use a dedicated plagiarism checker before submission.'
         }
         
         return jsonify(result)
@@ -598,6 +639,6 @@ if __name__ == '__main__':
     logger.info(f"Starting Open Research Nexus API server on port {port}")
     logger.info(f"Debug mode: {debug}")
     logger.info(f"Firebase initialized: {db is not None}")
-    logger.info(f"Gemini initialized: {model is not None}")
+    logger.info(f"Gemini initialized: {model is not None} (model: {GEMINI_MODEL})")
     
     app.run(host='0.0.0.0', port=port, debug=debug)

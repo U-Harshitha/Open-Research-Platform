@@ -26,7 +26,7 @@ FIREBASE_AUTH_URI=https://accounts.google.com/o/oauth2/auth
 FIREBASE_TOKEN_URI=https://oauth2.googleapis.com/token
 
 # Gemini API Configuration
-GEMINI_API_KEY=AIzaSyBBSB--cl-sEV4VRSTMMRxcApAtOxBuN0s
+GEMINI_API_KEY=your-gemini-api-key
 
 # Flask Configuration
 FLASK_APP=ai_service_api.py

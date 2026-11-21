@@ -63,9 +63,19 @@ const CollaborativeEditor = forwardRef(function CollaborativeEditor(
     insertHtml(html) {
       const quill = quillRef.current?.getEditor();
       if (!quill) return;
+      // Insert as new paragraph(s) after the block holding the cursor, never mid-word.
       const range = quill.getSelection(true);
-      const index = range ? range.index + range.length : quill.getLength();
+      let index = quill.getLength();
+      if (range) {
+        const [line] = quill.getLine(range.index + range.length);
+        if (line) index = quill.getIndex(line) + line.length();
+      }
+      index = Math.min(index, quill.getLength() - 1);
+      // Open an empty plain line first so the pasted blocks don't merge into the next heading.
+      quill.insertText(index, '\n', 'user');
+      quill.formatLine(index, 1, { header: false, list: false, blockquote: false, 'code-block': false }, 'user');
       quill.clipboard.dangerouslyPasteHTML(index, html, 'user');
+      quill.setSelection(index, 0, 'silent');
     },
     getText: () => quillRef.current?.getEditor().getText() || '',
   }));
