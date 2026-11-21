@@ -15,6 +15,7 @@ import Logo, { LogoMark } from '../components/ui/Logo.jsx';
 import Avatar from '../components/ui/Avatar.jsx';
 import StageMeter from '../components/ui/StageMeter.jsx';
 import { DisciplineDot } from '../components/ui/DisciplineTag.jsx';
+import { XrayIconButton } from '../components/xray/XrayButton.jsx';
 
 const PANELS = [
   { id: 'assistant', label: 'Assistant', icon: Sparkles },
@@ -99,6 +100,7 @@ export default function Workspace() {
                 <span className="hidden md:inline">{p.label}</span>
               </button>
             ))}
+          <XrayIconButton />
           <span className="ml-2"><Avatar name={displayNameOf(user)} photo={user.photoURL} size="h-8 w-8 text-xs" /></span>
         </div>
       </header>

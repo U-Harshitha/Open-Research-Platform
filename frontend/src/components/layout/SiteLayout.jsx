@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import SiteHeader from './SiteHeader.jsx';
 import SiteFooter from './SiteFooter.jsx';
+import { XrayCorner } from '../xray/XrayButton.jsx';
 
 export default function SiteLayout() {
   const { pathname } = useLocation();
@@ -18,6 +19,7 @@ export default function SiteLayout() {
         <Outlet />
       </main>
       <SiteFooter />
+      <XrayCorner />
     </div>
   );
 }

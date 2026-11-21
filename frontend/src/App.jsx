@@ -2,6 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext.jsx';
+import { XrayProvider } from './context/XrayContext.jsx';
 import SiteLayout from './components/layout/SiteLayout.jsx';
 import Landing from './pages/Landing.jsx';
 import Explore from './pages/Explore.jsx';
@@ -12,8 +13,10 @@ import Profile from './pages/Profile.jsx';
 import NewProject from './pages/NewProject.jsx';
 import NotFound from './pages/NotFound.jsx';
 
+// xray:lazy
 // The editor pulls in Quill; load it only when someone opens the workspace.
 const Workspace = lazy(() => import('./pages/Workspace.jsx'));
+// xray:end
 
 const Loading = () => (
   <div className="flex min-h-screen items-center justify-center">
@@ -28,6 +31,7 @@ const Loading = () => (
 export default function App() {
   return (
     <AuthProvider>
+      <XrayProvider>
       <Toaster
         position="bottom-center"
         toastOptions={{
@@ -57,6 +61,7 @@ export default function App() {
           <Route path="workspace/:docId" element={<Workspace />} />
         </Routes>
       </Suspense>
+      </XrayProvider>
     </AuthProvider>
   );
 }

@@ -4,8 +4,10 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App.jsx';
 import './index.css';
 
+// xray:base
 // Vite's BASE_URL is the sub-path the app is mounted on (e.g. /research/).
 const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
+// xray:end
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

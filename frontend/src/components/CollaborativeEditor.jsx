@@ -80,6 +80,7 @@ const CollaborativeEditor = forwardRef(function CollaborativeEditor(
     getText: () => quillRef.current?.getEditor().getText() || '',
   }));
 
+  // xray:echo
   // Remote changes from collaborators. Ignore echoes of our own saves.
   useEffect(() => {
     if (local) return;
@@ -100,6 +101,7 @@ const CollaborativeEditor = forwardRef(function CollaborativeEditor(
     );
     return unsub;
   }, [documentId, local]); // eslint-disable-line react-hooks/exhaustive-deps
+  // xray:end
 
   // Presence: heartbeat every 30s, show others active in the last 2 minutes.
   useEffect(() => {
@@ -173,6 +175,7 @@ const CollaborativeEditor = forwardRef(function CollaborativeEditor(
     [documentId, user]
   );
 
+  // xray:autosave
   const handleContentChange = useCallback(
     (next, _delta, source) => {
       setContent(next);
@@ -184,6 +187,7 @@ const CollaborativeEditor = forwardRef(function CollaborativeEditor(
     },
     [save, onContentChange]
   );
+  // xray:end
 
   const handleTitleChange = (next) => {
     setDocumentTitle(next);

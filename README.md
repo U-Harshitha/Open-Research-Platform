@@ -2,7 +2,7 @@
 
 🚀 **AI-Powered Research Collaboration Platform**
 
-A comprehensive, real-time research collaboration platform built with React, Python Flask, and Firebase, featuring AI-powered research assistance through Google Gemini.
+A real-time research collaboration platform built with React, Python Flask and Firebase. AI help runs on Groq's free tier, and Find searches real papers on OpenAlex.
 
 ## ✨ Features
 
@@ -31,7 +31,7 @@ A comprehensive, real-time research collaboration platform built with React, Pyt
 - Node.js (v18 or higher)
 - Python (v3.8 or higher)
 - Firebase project with Firestore and Storage enabled
-- Google Gemini API key
+- Free Groq and OpenAlex API keys (see DEPLOYMENT_GUIDE.md)
 
 ### Installation
 
@@ -59,7 +59,8 @@ A comprehensive, real-time research collaboration platform built with React, Pyt
    ```env
    GOOGLE_APPLICATION_CREDENTIALS=./firebase-service-account.json
    FIREBASE_PROJECT_ID=your-project-id
-   GEMINI_API_KEY=your-gemini-api-key
+   GROQ_API_KEY=your-groq-key
+   OPENALEX_API_KEY=your-openalex-key
    ALLOWED_ORIGINS=http://localhost:3000
    FLASK_ENV=development
    ```

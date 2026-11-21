@@ -15,6 +15,8 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: true,
+      // X-ray quotes backend/ai_service_api.py, which sits outside frontend/.
+      fs: { allow: ['..'] },
     },
     build: {
       // Output lands in dist/<base>/ so Firebase Hosting serves files at the

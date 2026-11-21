@@ -25,6 +25,7 @@ export const initials = (name = '') =>
 export const stripHtml = (html = '') =>
   html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 
+// xray:stats
 // Honest numbers computed from the manuscript itself.
 export function manuscriptStats(html = '') {
   const text = stripHtml(html);
@@ -37,6 +38,7 @@ export function manuscriptStats(html = '') {
     figures: (html.match(/<img /g) || []).length,
   };
 }
+// xray:end
 
 export function bibtexFor(project, authors) {
   const year = (project.updated || '').slice(0, 4) || new Date().getFullYear();

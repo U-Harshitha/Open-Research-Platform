@@ -1,9 +1,9 @@
 # Render Blueprint: https://render.com/docs/blueprint-spec
-# Render → New → Blueprint → pick this repo → paste GEMINI_API_KEY when asked → Apply.
+# Render → New → Blueprint → pick this repo → paste GROQ_API_KEY and OPENALEX_API_KEY when asked → Apply.
 #
 # Creates two services:
 #   open-research-nexus      static site (React), served under /research
-#   open-research-nexus-api  Flask AI service (Gemini)
+#   open-research-nexus-api  Flask AI service (Groq + OpenAlex)
 # The portfolio proxies /research to the static site (see its vercel.json),
 # the same way it proxies /hangman to the Phoenix app.
 services:
@@ -63,10 +63,14 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.7
-      - key: GEMINI_API_KEY
+      # Free key: console.groq.com → API Keys. Drafting, review, summaries.
+      - key: GROQ_API_KEY
         sync: false
-      - key: GEMINI_MODEL
-        value: gemini-flash-latest
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      # Free key: openalex.org → Settings → API. Real papers for Find.
+      - key: OPENALEX_API_KEY
+        sync: false
       # Browser origins allowed to call the API. If Render gives the static
       # site a different URL (e.g. with a suffix), update the second entry.
       - key: ALLOWED_ORIGINS

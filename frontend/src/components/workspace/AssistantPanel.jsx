@@ -4,7 +4,7 @@ import { API_CONFIG } from '../../lib/config.js';
 import { stripHtml } from '../../lib/format.js';
 
 const MODES = [
-  { id: 'search', label: 'Find', icon: Search, hint: 'Ask a question; get a grounded answer with sources.' },
+  { id: 'search', label: 'Find', icon: Search, hint: 'Searches 250M+ scholarly works on OpenAlex, then summarises only the papers it found — every citation is real.' },
   { id: 'complete', label: 'Draft', icon: PenLine, hint: 'Describe a paragraph; review it before inserting.' },
   { id: 'analyze', label: 'Review', icon: FileSearch, hint: 'Get structural feedback on the current draft.' },
   { id: 'plagiarism', label: 'Integrity', icon: ShieldCheck, hint: 'Flag passages that may need a citation.' },
@@ -69,6 +69,7 @@ export default function AssistantPanel({ content, onInsert }) {
   const needsInput = mode === 'search' || mode === 'complete';
   const disabled = loading || (needsInput ? !input.trim() : !hasText);
   const r = results[mode];
+  const papers = r?.papers || (r?.sources || []).map((src, i) => ({ n: i + 1, title: src.title || src.uri || src, url: src.uri || src }));
 
   return (
     <div className="flex h-full flex-col">
@@ -120,22 +121,31 @@ export default function AssistantPanel({ content, onInsert }) {
         {error && <ErrorNote message={error} />}
 
         {r && mode === 'search' && (
-          <div className="space-y-3">
-            <div className="whitespace-pre-wrap rounded-lg border border-rule p-3 text-sm leading-relaxed text-ink-2">{r.answer}</div>
-            {r.sources?.length > 0 && (
+          <div className="space-y-4">
+            {r.answer ? (
+              <div className="whitespace-pre-wrap rounded-lg border border-rule p-3 text-sm leading-relaxed text-ink-2">{r.answer}</div>
+            ) : (
+              <p className="text-xs text-ink-3">AI summary unavailable — the papers below are still real search results.</p>
+            )}
+            {papers.length > 0 && (
               <div>
-                <p className="eyebrow mb-2">Sources</p>
-                <ol className="space-y-1.5">
-                  {r.sources.slice(0, 8).map((src, i) => {
-                    const uri = typeof src === 'string' ? src : src.uri;
-                    const label = typeof src === 'string' ? src : src.title || src.uri;
-                    return (
-                      <li key={i} className="flex gap-2 text-xs">
-                        <span className="font-mono text-ink-3">[{i + 1}]</span>
-                        <a href={uri} target="_blank" rel="noopener noreferrer" className="truncate text-accent hover:underline">{label}</a>
-                      </li>
-                    );
-                  })}
+                <p className="eyebrow mb-2">Papers · OpenAlex</p>
+                <ol className="space-y-2">
+                  {papers.map((p) => (
+                    <li key={p.n} className="rounded-lg border border-rule p-3">
+                      <p className="flex gap-2 text-sm leading-snug">
+                        <span className="font-mono text-2xs text-ink-3">[{p.n}]</span>
+                        <a href={p.url} target="_blank" rel="noopener noreferrer" className="font-medium hover:text-accent hover:underline">{p.title}</a>
+                      </p>
+                      <p className="mt-1 pl-6 text-xs text-ink-3">
+                        {[p.authors?.join(', '), p.year, p.venue].filter(Boolean).join(' · ')}
+                        {p.cited_by > 0 && <> · cited {p.cited_by.toLocaleString()}×</>}
+                      </p>
+                      <button onClick={() => onInsert(referenceHtml(p))} className="ml-6 mt-2 text-xs font-medium text-accent hover:underline">
+                        Insert reference
+                      </button>
+                    </li>
+                  ))}
                 </ol>
               </div>
             )}
@@ -184,6 +194,17 @@ export default function AssistantPanel({ content, onInsert }) {
       </div>
     </div>
   );
+}
+
+const escape = (s = '') => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+// A plain reference line; numbering is left to the author.
+function referenceHtml(p) {
+  const authors = p.authors?.length ? `${escape(p.authors.join(', '))} ` : '';
+  const year = p.year ? `(${p.year}). ` : '';
+  const venue = p.venue ? ` <em>${escape(p.venue)}</em>.` : '';
+  const link = p.url ? ` <a href="${escape(p.url)}">${escape(p.url)}</a>` : '';
+  return `<p>${authors}${year}${escape(p.title)}.${venue}${link}</p>`;
 }
 
 function ErrorNote({ message }) {

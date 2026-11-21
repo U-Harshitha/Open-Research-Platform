@@ -56,6 +56,7 @@ export async function createProject(user, data) {
     lastEditedBy: user.uid,
   };
 
+  // xray:fallback
   if (!useLocal(user)) {
     try {
       const ref = await addDoc(collection(db, 'documents'), {
@@ -72,6 +73,7 @@ export async function createProject(user, data) {
   const now = new Date().toISOString();
   writeLocal([{ id, ...base, createdAt: now, updatedAt: now }, ...readLocal()]);
   return { id, local: true };
+  // xray:end
 }
 
 export async function updateProject(user, id, updates) {

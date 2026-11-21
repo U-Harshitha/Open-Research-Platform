@@ -7,8 +7,6 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from functools import wraps
 
-from google import genai
-from google.genai import types as genai_types
 import requests
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
@@ -62,56 +60,126 @@ def initialize_firebase():
         logger.error(f"Failed to initialize Firebase: {e}")
         return None
 
-# Initialize Gemini AI (google-genai SDK)
-# GEMINI_MODEL defaults to Google's rolling alias for the current Flash model,
-# so the service keeps working as individual model versions are retired.
+# ---------------------------------------------------------------------------
+# AI providers
+#
+# Groq (default): free tier, OpenAI-compatible, fast open models. Set GROQ_API_KEY.
+# Gemini (optional): set GEMINI_API_KEY instead and `pip install google-genai`.
+# Find doesn't rely on either model's memory for citations: it searches
+# OpenAlex (250M+ scholarly works) and the model only summarises those papers.
+# ---------------------------------------------------------------------------
+GROQ_BASE_URL = os.getenv('GROQ_BASE_URL', 'https://api.groq.com/openai/v1').rstrip('/')
+GROQ_MODEL = os.getenv('GROQ_MODEL', 'openai/gpt-oss-120b')
 GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-flash-latest')
+OPENALEX_URL = os.getenv('OPENALEX_URL', 'https://api.openalex.org').rstrip('/')
+
+SYSTEM_PROMPT = (
+    "You are a careful research-writing assistant. Never invent citations, data or "
+    "quotes. If you are unsure, say so plainly."
+)
 
 
-class GeminiResult:
-    def __init__(self, text: str, sources: Optional[List[Dict[str, str]]] = None):
-        self.text = text or ''
-        self.sources = sources or []
+class AIResult:
+    def __init__(self, text: str):
+        self.text = (text or '').strip()
+
+
+class GroqModel:
+    provider = 'groq'
+
+    def __init__(self, api_key: str, model_name: str):
+        self.api_key = api_key
+        self.model_name = model_name
+
+    def generate_content(self, prompt: str) -> AIResult:
+        res = requests.post(
+            f"{GROQ_BASE_URL}/chat/completions",
+            headers={'Authorization': f"Bearer {self.api_key}", 'Content-Type': 'application/json'},
+            json={
+                'model': self.model_name,
+                'messages': [
+                    {'role': 'system', 'content': SYSTEM_PROMPT},
+                    {'role': 'user', 'content': prompt},
+                ],
+                'temperature': 0.3,
+            },
+            timeout=90,
+        )
+        if res.status_code >= 400:
+            raise RuntimeError(f"Groq error {res.status_code}: {res.text[:300]}")
+        return AIResult(res.json()['choices'][0]['message']['content'])
 
 
 class GeminiModel:
-    """Thin wrapper so routes can call model.generate_content(prompt)."""
+    provider = 'gemini'
 
-    def __init__(self, client, model_name: str):
-        self.client = client
+    def __init__(self, api_key: str, model_name: str):
+        from google import genai  # optional dependency
+        self.client = genai.Client(api_key=api_key)
         self.model_name = model_name
 
-    def generate_content(self, prompt: str, search: bool = False) -> GeminiResult:
-        config = None
-        if search:
-            config = genai_types.GenerateContentConfig(
-                tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())]
-            )
-        response = self.client.models.generate_content(model=self.model_name, contents=prompt, config=config)
-        sources = []
-        try:
-            meta = response.candidates[0].grounding_metadata
-            for chunk in (meta.grounding_chunks or []) if meta else []:
-                if chunk.web and chunk.web.uri:
-                    sources.append({'title': chunk.web.title or chunk.web.domain or chunk.web.uri, 'uri': chunk.web.uri})
-        except (AttributeError, IndexError, TypeError):
-            pass
-        return GeminiResult(response.text, sources)
+    def generate_content(self, prompt: str) -> AIResult:
+        response = self.client.models.generate_content(
+            model=self.model_name, contents=f"{SYSTEM_PROMPT}\n\n{prompt}"
+        )
+        return AIResult(response.text)
 
 
-def initialize_gemini():
+def initialize_model():
     try:
-        api_key = os.getenv('GEMINI_API_KEY')
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY environment variable not set")
-        return GeminiModel(genai.Client(api_key=api_key), GEMINI_MODEL)
+        if os.getenv('GROQ_API_KEY'):
+            return GroqModel(os.getenv('GROQ_API_KEY'), GROQ_MODEL)
+        if os.getenv('GEMINI_API_KEY'):
+            return GeminiModel(os.getenv('GEMINI_API_KEY'), GEMINI_MODEL)
+        raise ValueError("Set GROQ_API_KEY (recommended) or GEMINI_API_KEY")
     except Exception as e:
-        logger.error(f"Failed to initialize Gemini: {e}")
+        logger.error(f"Failed to initialize AI model: {e}")
         return None
+
+
+# xray:find
+def openalex_search(query: str, limit: int = 8) -> List[Dict[str, Any]]:
+    """Real papers from OpenAlex, so every citation in an answer exists."""
+    params = {
+        'search': query,
+        'per_page': limit,
+        'select': 'id,doi,display_name,publication_year,authorships,primary_location,cited_by_count,abstract_inverted_index',
+    }
+    if os.getenv('OPENALEX_API_KEY'):
+        params['api_key'] = os.getenv('OPENALEX_API_KEY')
+    res = requests.get(f"{OPENALEX_URL}/works", params=params, timeout=20)
+    res.raise_for_status()
+    papers = []
+    for i, w in enumerate(res.json().get('results', []), start=1):
+        authors = [a.get('author', {}).get('display_name') for a in (w.get('authorships') or [])]
+        authors = [a for a in authors if a]
+        source = ((w.get('primary_location') or {}).get('source') or {}).get('display_name')
+        doi = w.get('doi')
+        papers.append({
+            'n': i,
+            'title': w.get('display_name') or 'Untitled',
+            'authors': authors[:3] + (['et al.'] if len(authors) > 3 else []),
+            'year': w.get('publication_year'),
+            'venue': source,
+            'cited_by': w.get('cited_by_count', 0),
+            'doi': doi,
+            'url': doi or w.get('id'),
+            'abstract': rebuild_abstract(w.get('abstract_inverted_index'))[:700],
+        })
+    return papers
+# xray:end
+
+
+def rebuild_abstract(inverted: Optional[Dict[str, List[int]]]) -> str:
+    """OpenAlex stores abstracts as {word: [positions]}; put the words back in order."""
+    if not inverted:
+        return ''
+    positions = [(pos, word) for word, poss in inverted.items() for pos in poss]
+    return ' '.join(word for _, word in sorted(positions))
 
 # Global instances
 db = initialize_firebase()
-model = initialize_gemini()
+model = initialize_model()
 
 # Rate limiting and error handling
 def exponential_backoff(max_retries=3, base_delay=1):
@@ -156,9 +224,11 @@ def health_check():
         'timestamp': datetime.utcnow().isoformat(),
         'services': {
             'firebase': db is not None,
-            'gemini': model is not None
+            'ai': model is not None,
+            'openalex': True
         },
-        'model': GEMINI_MODEL
+        'provider': getattr(model, 'provider', None),
+        'model': getattr(model, 'model_name', None)
     })
 
 @app.route('/api/search', methods=['POST'])
@@ -166,7 +236,7 @@ def health_check():
 @exponential_backoff()
 def grounded_search():
     """
-    Perform grounded search using Gemini API with Google Search integration
+    Find papers in OpenAlex, then summarise them with citations that point at real works
     """
     data = request.get_json()
     query = data.get('query', '').strip()
@@ -175,53 +245,49 @@ def grounded_search():
     if not query:
         return jsonify({'error': 'Query is required'}), 400
     
-    if not model:
-        return jsonify({'error': 'AI service unavailable'}), 503
-    
-    # Enhanced prompt for grounded search
-    search_prompt = f"""
-    As a research assistant, perform a comprehensive search and analysis for the following query:
-    
-    Query: {query}
-    Document Context: {context[:1000]}
-
-    Use Google Search to ground the answer in current, citable sources.
-    
-    Please provide:
-    1. A comprehensive answer based on the most current and reliable information
-    2. Key findings and statistics (with specific numbers when available)
-    3. Recent developments and trends
-    4. Academic and scientific perspectives
-    5. Relevant citations and sources
-    
-    Format your response as a structured analysis with clear sections and factual information.
-    Focus on academic rigor and cite specific sources where possible.
-    """
-    
     try:
-        response = model.generate_content(search_prompt, search=True)
-        
-        result = {
-            'success': True,
-            'query': query,
-            'answer': response.text,
-            'timestamp': datetime.utcnow().isoformat(),
-            'grounded': True,
-            'sources': response.sources or [{'title': s, 'uri': s} for s in extract_sources_from_response(response.text) if s.startswith('http')]
-        }
-        
-        # Log search for analytics
-        if db:
-            log_search_query(query, context, result)
-        
-        return jsonify(result)
-        
+        papers = openalex_search(query)
     except Exception as e:
-        logger.error(f"Search error: {e}")
-        return jsonify({
-            'error': 'Search service temporarily unavailable',
-            'success': False
-        }), 503
+        logger.error(f"OpenAlex error: {e}")
+        papers = []
+
+    answer = ''
+    if model and papers:
+        listing = "\n\n".join(
+            f"[{p['n']}] {p['title']} ({p['year']}). {', '.join(p['authors'])}. {p['venue'] or ''}\n{p['abstract'] or '(no abstract)'}"
+            for p in papers
+        )
+        prompt = f"""A researcher asked: {query}
+
+Their draft so far (for context only): {context[:800]}
+
+Answer in 2-4 short paragraphs using ONLY the papers below. Cite them as [n].
+If the papers don't answer the question, say what they do cover and what is missing.
+
+Papers:
+{listing}"""
+        try:
+            answer = model.generate_content(prompt).text
+        except Exception as e:
+            logger.error(f"Summary error: {e}")
+    elif model and not papers:
+        answer = "No matching papers were found in OpenAlex. Try broader or different keywords."
+
+    if not papers and not answer:
+        return jsonify({'error': 'Search service temporarily unavailable', 'success': False}), 503
+
+    result = {
+        'success': True,
+        'query': query,
+        'answer': answer,
+        'papers': [{k: v for k, v in p.items() if k != 'abstract'} for p in papers],
+        'sources': [{'title': p['title'], 'uri': p['url']} for p in papers if p['url']],
+        'grounded': bool(papers),
+        'timestamp': datetime.utcnow().isoformat(),
+    }
+    if db:
+        log_search_query(query, context, result)
+    return jsonify(result)
 
 @app.route('/api/complete', methods=['POST'])
 @handle_errors
@@ -639,6 +705,6 @@ if __name__ == '__main__':
     logger.info(f"Starting Open Research Nexus API server on port {port}")
     logger.info(f"Debug mode: {debug}")
     logger.info(f"Firebase initialized: {db is not None}")
-    logger.info(f"Gemini initialized: {model is not None} (model: {GEMINI_MODEL})")
+    logger.info(f"AI model: {getattr(model, 'provider', None)} {getattr(model, 'model_name', None)}")
     
     app.run(host='0.0.0.0', port=port, debug=debug)
